@@ -57,6 +57,20 @@ ahead — a chain lets a single straggler drag the whole line off, and sampling 
 distance-indexed trail means the troop rounds corners and climbs onto roofs with
 you instead of cutting through the building.
 
+## One self-contained HTML file
+
+```bash
+npm run build:standalone   # -> dist/katten-i-umea.html
+```
+
+Bundles the engine, three.js and the HUD into a single ~620 kB HTML file with
+no external requests at all — no CDN, no fonts, no images, no audio. Open it
+straight off disk, drop it on any static host, or mail it to someone.
+
+The HUD in that build is plain DOM rather than React, so the file carries no
+framework; the game engine underneath is exactly the same code as the Next.js
+app.
+
 ## Source layout
 
 ```

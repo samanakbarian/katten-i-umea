@@ -16,3 +16,6 @@ next-env.d.ts
 
 # TypeScript incremental build cache
 *.tsbuildinfo
+
+# Output of the single-file build
+/dist

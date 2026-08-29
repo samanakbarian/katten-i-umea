@@ -1,0 +1,46 @@
+import { build } from "esbuild";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+/**
+ * Bundles the whole game — engine, three.js and all — into one self-contained
+ * HTML file with no external requests. Useful for dropping the game on any
+ * static host, or just opening it off a memory stick.
+ *
+ *   node standalone/build.mjs   ->   dist/katten-i-umea.html
+ */
+
+const here = dirname(fileURLToPath(import.meta.url));
+const root = join(here, "..");
+const outDir = join(root, "dist");
+const outFile = join(outDir, "katten-i-umea.html");
+
+const result = await build({
+  entryPoints: [join(here, "main.ts")],
+  bundle: true,
+  minify: true,
+  format: "iife",
+  target: ["es2020"],
+  write: false,
+  legalComments: "none",
+  define: { "process.env.NODE_ENV": '"production"' },
+});
+
+const js = result.outputFiles[0].text;
+const css = await readFile(join(here, "style.css"), "utf8");
+
+const html = `<meta charset="utf-8">
+<title>Katten i Umeå</title>
+<style>
+${css}</style>
+<div id="app"></div>
+<script>
+${js}</script>
+`;
+
+await mkdir(outDir, { recursive: true });
+await writeFile(outFile, html, "utf8");
+
+const kb = (n) => `${(n / 1024).toFixed(0)} kB`;
+console.log(`${outFile}  ${kb(Buffer.byteLength(html))}  (js ${kb(js.length)}, css ${kb(css.length)})`);

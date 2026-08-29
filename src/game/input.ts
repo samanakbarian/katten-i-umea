@@ -17,6 +17,7 @@ export class Input {
   // through a frame. Latch them so a tap is never swallowed.
   private jumpLatch = false;
   private meowLatch = false;
+  private dragging = false;
   private keys = new Set<string>();
   private buttons = new Set<string>();
   private touchLook: { id: number; x: number; y: number } | null = null;
@@ -52,19 +53,37 @@ export class Input {
     this.disposers.push(() => window.removeEventListener("keydown", kd));
     this.disposers.push(() => window.removeEventListener("keyup", ku));
 
+    // Mouse look. Pointer lock is the good path, but some browsers and
+    // embeddings refuse it, so click-and-drag has to work too or the camera is
+    // simply dead.
     const onMouseMove = (e: MouseEvent) => {
-      if (!this.pointerLocked) return;
-      this.lookDelta.x += e.movementX;
-      this.lookDelta.y += e.movementY;
+      if (this.pointerLocked) {
+        this.lookDelta.x += e.movementX;
+        this.lookDelta.y += e.movementY;
+      } else if (this.dragging) {
+        this.lookDelta.x += e.movementX;
+        this.lookDelta.y += e.movementY;
+      }
+    };
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button === 0) this.dragging = true;
+    };
+    const onMouseUp = () => {
+      this.dragging = false;
     };
     const onLockChange = () => {
+      const had = this.pointerLocked;
       this.pointerLocked = document.pointerLockElement === this.element;
-      if (!this.pointerLocked) this.keys.clear();
+      if (had && !this.pointerLocked) this.keys.clear();
     };
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("pointerlockchange", onLockChange);
+    element.addEventListener("mousedown", onMouseDown);
+    window.addEventListener("mouseup", onMouseUp);
     this.disposers.push(() => document.removeEventListener("mousemove", onMouseMove));
     this.disposers.push(() => document.removeEventListener("pointerlockchange", onLockChange));
+    this.disposers.push(() => element.removeEventListener("mousedown", onMouseDown));
+    this.disposers.push(() => window.removeEventListener("mouseup", onMouseUp));
 
     // --- touch ---------------------------------------------------------------
     const half = () => window.innerWidth / 2;
