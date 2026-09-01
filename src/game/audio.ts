@@ -215,6 +215,63 @@ export class GameAudio {
     }
   }
 
+  /** A coin landing in the paw: short, bright, two notes up. */
+  coin() {
+    if (!this.ctx || !this.master) return;
+    const t0 = this.ctx.currentTime;
+    for (let i = 0; i < 2; i++) {
+      const t = t0 + i * 0.05;
+      const osc = this.ctx.createOscillator();
+      osc.type = "square";
+      osc.frequency.value = i ? 1975 : 1318;
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.055, t + 0.008);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+      osc.connect(g).connect(this.master);
+      osc.start(t);
+      osc.stop(t + 0.18);
+    }
+  }
+
+  /** A small engine turning over and settling into an idle. */
+  engineStart() {
+    if (!this.ctx || !this.master) return;
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(38, t);
+    osc.frequency.linearRampToValueAtTime(96, t + 0.35);
+    osc.frequency.linearRampToValueAtTime(58, t + 0.9);
+    const lp = this.ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = 620;
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.16, t + 0.08);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 1.1);
+    osc.connect(lp).connect(g).connect(this.master);
+    osc.start(t);
+    osc.stop(t + 1.15);
+  }
+
+  /** Not enough kronor. */
+  deny() {
+    if (!this.ctx || !this.master) return;
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    osc.type = "square";
+    osc.frequency.setValueAtTime(220, t);
+    osc.frequency.exponentialRampToValueAtTime(120, t + 0.18);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.07, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+    osc.connect(g).connect(this.master);
+    osc.start(t);
+    osc.stop(t + 0.22);
+  }
+
   fanfare() {
     if (!this.ctx || !this.master) return;
     const t0 = this.ctx.currentTime;

@@ -17,8 +17,26 @@ export interface CatPose {
 
 // A white cat. Kept just off-white so the tone mapper has somewhere to go,
 // with barely-there grey ghost markings for form.
-const FUR = "#ebe8e2";
-const FUR_DARK = "#bdbab1";
+/** A coat the cat can be wearing. Sold in the shop; white is what you start in. */
+export interface CoatColors {
+  base: string;
+  stripe: string;
+  under: string;
+  tailTip: string;
+  eye: string;
+  eyeGlow: string;
+}
+
+// Kept just off-white so the tone mapper has somewhere to go, with
+// barely-there grey ghost markings for form.
+export const WHITE_COAT: CoatColors = {
+  base: "#ebe8e2",
+  stripe: "#bdbab1",
+  under: "#fdfcf8",
+  tailTip: "#cdc9c0",
+  eye: "#2c6ba8",
+  eyeGlow: "#8fd0ff",
+};
 
 /**
  * The cat is built from primitives at runtime: 4 jointed legs, a spring of a
@@ -36,6 +54,10 @@ export class Cat {
   private eyes: THREE.Mesh[] = [];
   private eyeLids: THREE.Mesh[] = [];
   private shadow: THREE.Mesh;
+  private furMat: THREE.MeshStandardMaterial;
+  private underMat: THREE.MeshStandardMaterial;
+  private tipMat: THREE.MeshStandardMaterial;
+  private irisMat: THREE.MeshStandardMaterial;
 
   private gait = 0;
   private blinkTimer = 2;
@@ -46,21 +68,26 @@ export class Cat {
 
   constructor() {
     const fur = new THREE.MeshStandardMaterial({
-      map: furTexture(FUR, FUR_DARK),
+      map: furTexture(WHITE_COAT.base, WHITE_COAT.stripe),
       roughness: 0.92,
       metalness: 0,
     });
-    const dark = new THREE.MeshStandardMaterial({ color: "#cdc9c0", roughness: 0.9 });
+    const dark = new THREE.MeshStandardMaterial({ color: WHITE_COAT.tailTip, roughness: 0.9 });
     const pink = new THREE.MeshStandardMaterial({ color: "#e79b9b", roughness: 0.75 });
-    const white = new THREE.MeshStandardMaterial({ color: "#fdfcf8", roughness: 0.88 });
+    const white = new THREE.MeshStandardMaterial({ color: WHITE_COAT.under, roughness: 0.88 });
     // White cats and blue eyes belong together.
     const eyeMat = new THREE.MeshStandardMaterial({
-      color: "#2c6ba8",
-      emissive: new THREE.Color("#8fd0ff"),
+      color: WHITE_COAT.eye,
+      emissive: new THREE.Color(WHITE_COAT.eyeGlow),
       emissiveIntensity: 0.5,
       roughness: 0.2,
     });
     const pupil = new THREE.MeshBasicMaterial({ color: "#0a0d0a" });
+
+    this.furMat = fur;
+    this.underMat = white;
+    this.tipMat = dark;
+    this.irisMat = eyeMat;
 
     this.root.add(this.body);
     this.body.position.y = 0.3;
@@ -228,6 +255,21 @@ export class Cat {
     this.shadow.rotation.x = -Math.PI / 2;
     this.shadow.renderOrder = 2;
     this.root.add(this.shadow);
+  }
+
+  /**
+   * Repaint the cat. The tabby texture is regenerated rather than tinted, so a
+   * black cat gets real black stripes instead of a grey wash over ginger ones.
+   */
+  setCoat(coat: CoatColors) {
+    const old = this.furMat.map;
+    this.furMat.map = furTexture(coat.base, coat.stripe);
+    this.furMat.needsUpdate = true;
+    old?.dispose();
+    this.underMat.color.set(coat.under);
+    this.tipMat.color.set(coat.tailTip);
+    this.irisMat.color.set(coat.eye);
+    this.irisMat.emissive.set(coat.eyeGlow);
   }
 
   /** Where the cat is looking from, for the camera and for meow effects. */

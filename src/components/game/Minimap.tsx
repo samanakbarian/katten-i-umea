@@ -70,6 +70,12 @@ export function Minimap({ map, size = 168 }: { map: HudState["map"]; size?: numb
       ctx.fill();
     }
 
+    // Loose change.
+    ctx.fillStyle = "rgba(232,192,90,0.75)";
+    for (const c of map.coins) {
+      ctx.fillRect(sx(c.x) - 1, sy(c.z) - 1, 2, 2);
+    }
+
     // Monkeys still waiting to be found.
     for (const m of map.monkeys) {
       ctx.fillStyle = "#ffc07a";
@@ -91,6 +97,18 @@ export function Minimap({ map, size = 168 }: { map: HudState["map"]; size?: numb
         ctx.stroke();
       }
     }
+
+    // Places you own or can spend money in.
+    const marker = (x: number, z: number, glyph: string, color: string) => {
+      ctx.fillStyle = color;
+      ctx.font = "bold 9px system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(glyph, sx(x), sy(z));
+    };
+    marker(map.shop.x, map.shop.z, "S", "#7fe0ff");
+    if (map.house) marker(map.house.x, map.house.z, "H", "#ffb37a");
+    if (map.car) marker(map.car.x, map.car.z, "B", "#9fd0ff");
 
     // The cat.
     const px = sx(map.player.x);

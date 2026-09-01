@@ -11,6 +11,17 @@ import { Birds, Pickups } from "./pickups";
 import { Monkeys } from "./monkeys";
 import { Player } from "./player";
 import { Sky } from "./sky";
+import { Coins } from "./money";
+import {
+  CAR_POS,
+  HOUSE_POS,
+  SHOP_POS,
+  Shop,
+  ShopItemState,
+  buildCatHouse,
+  buildShop,
+} from "./shop";
+import { Car } from "./car";
 
 export type Quality = "low" | "high";
 
@@ -21,6 +32,8 @@ export interface HudState {
   birds: number;
   monkeys: number;
   monkeyTotal: number;
+  money: number;
+  coins: number;
   score: number;
   stamina: number;
   time: number;
@@ -30,12 +43,25 @@ export interface HudState {
   climbing: boolean;
   wet: boolean;
   fps: number;
+  /** Contextual "press F to…" line, or null. */
+  prompt: string | null;
+  shopOpen: boolean;
+  shopItems: ShopItemState[];
+  shopMessage: string | null;
+  driving: boolean;
+  kmh: number;
+  ownsHouse: boolean;
+  ownsCar: boolean;
   /** Everything the minimap needs, in world units. */
   map: {
     player: { x: number; z: number; yaw: number };
     fish: { x: number; z: number }[];
     monkeys: { x: number; z: number }[];
+    coins: { x: number; z: number }[];
     landmarks: { x: number; z: number; found: boolean }[];
+    shop: { x: number; z: number };
+    house: { x: number; z: number } | null;
+    car: { x: number; z: number } | null;
   };
 }
 
@@ -62,6 +88,10 @@ export class Game {
   private pickups: Pickups;
   private birds: Birds;
   private monkeys: Monkeys;
+  private coins: Coins;
+  private shop = new Shop();
+  private car: Car;
+  private houseGroup: THREE.Group | null = null;
   private sun: THREE.DirectionalLight;
   private catLight: THREE.PointLight;
 
@@ -78,6 +108,13 @@ export class Game {
   private adaptTimer = 0;
   private finished = false;
   private hudAccumulator = 0;
+  private shopOpen = false;
+  private shopMessage: string | null = null;
+  private shopMessageTimer = 0;
+  private prompt: string | null = null;
+  /** Development only: pins the camera for screenshots. */
+  private freeCam: { pos: THREE.Vector3; target: THREE.Vector3 } | null = null;
+  private houseRest = 0;
 
   constructor(
     private container: HTMLElement,
@@ -156,6 +193,12 @@ export class Game {
     this.scene.add(this.birds.group);
     this.monkeys = new Monkeys(this.world, MONKEY_TOTAL);
     this.scene.add(this.monkeys.group);
+    this.coins = new Coins(this.world);
+    this.scene.add(this.coins.group);
+
+    this.scene.add(buildShop(this.world.colliders));
+    this.car = new Car(this.world);
+    this.scene.add(this.car.group);
 
     // A soft warm light travelling with the cat keeps it readable at night.
     this.catLight = new THREE.PointLight(0xffe6cc, 0.8, 5, 2);
@@ -199,6 +242,19 @@ export class Game {
         look: (yaw: number, pitch: number) => {
           this.player.camYaw = yaw;
           this.player.camPitch = pitch;
+        },
+        grant: (kr: number) => this.shop.add(kr),
+        freecam: (px: number, py: number, pz: number, tx: number, ty: number, tz: number) => {
+          this.freeCam = {
+            pos: new THREE.Vector3(px, py, pz),
+            target: new THREE.Vector3(tx, ty, tz),
+          };
+        },
+        followcam: () => {
+          this.freeCam = null;
+        },
+        drive: () => {
+          if (this.car.spawned && !this.car.occupied) this.car.enter();
         },
         debug: () => ({
           pos: this.player.position.toArray().map((v) => Math.round(v * 10) / 10),
@@ -266,15 +322,36 @@ export class Game {
     this.adaptQuality(dt);
 
     this.input.beginFrame();
-    const meowed = this.input.meowPressed;
-    this.player.update(dt, this.input);
+    const meowed = this.input.meowPressed && !this.car.occupied;
+    if (this.car.occupied) {
+      this.car.update(dt, this.input, this.camera);
+      // The cat rides in the driver's seat, sitting up to see over the wheel.
+      this.player.position.copy(this.car.doorStep);
+      this.cat.root.position.copy(this.car.seat);
+      this.cat.root.rotation.y = this.car.heading;
+      this.cat.root.userData.heightAboveGround = 0;
+      this.cat.update(dt, {
+        speed01: 0,
+        grounded: true,
+        verticalVelocity: 0,
+        crouch: 1,
+        climbing: false,
+        meowAge: this.player.meowAge,
+        turn: 0,
+      });
+      this.player.meowAge += dt;
+    } else {
+      this.player.update(dt, this.input);
+      if (this.car.spawned) this.car.rest(dt);
+    }
+    this.handleInteraction();
     this.input.endFrame();
 
     this.world.update(dt, this.elapsed);
     this.sky.update(dt, this.elapsed, this.camera);
 
-    // Shadow camera rides along with the cat.
-    const p = this.player.position;
+    // Shadow camera rides along with whatever the player is currently being.
+    const p = this.car.occupied ? this.car.position : this.player.position;
     this.sun.position.set(p.x - 34, p.y + 46, p.z - 52);
     this.sun.target.position.set(p.x, p.y, p.z);
     this.sun.target.updateMatrixWorld();
@@ -283,6 +360,7 @@ export class Game {
     const got = this.pickups.update(dt, this.elapsed, p);
     if (got.fish) {
       this.score += 100;
+      this.shop.add(15);
       this.audio.pickup(this.pickups.fishTaken);
       if (this.pickups.fishTaken === FISH_TOTAL && !this.finished) {
         this.finished = true;
@@ -295,6 +373,7 @@ export class Game {
     }
     if (got.cream) {
       this.score += 40;
+      this.shop.add(20);
       this.player.stamina = 1;
       this.audio.purr(1.1);
       this.showToast("Grädde", "Stamina restored. Purring at maximum.");
@@ -303,6 +382,7 @@ export class Game {
     const rescued = this.monkeys.update(dt, this.elapsed, p, this.player.yaw);
     if (rescued) {
       this.score += 150 * rescued;
+      this.shop.add(50 * rescued);
       this.audio.squeak();
       this.pickups.burst(
         p.clone().setY(p.y + 0.35),
@@ -324,18 +404,37 @@ export class Game {
       }
     }
 
+    // A car sweeps up coins over a much wider swathe than a cat's paw.
+    const earned = this.coins.update(dt, this.elapsed, p, this.car.occupied ? 2.6 : 0.9);
+    if (earned) {
+      this.shop.add(earned);
+      this.score += earned;
+      this.audio.coin();
+    }
+
     const startled = this.birds.update(dt, this.elapsed, p, meowed);
     if (startled) {
       this.birdsScared += startled;
       this.score += startled * 15;
+      this.shop.add(startled * 3);
       this.audio.flap();
     }
 
+    if (this.houseRest > 0) this.houseRest -= dt;
     this.checkLandmarks();
 
     if (this.toastTimer > 0) {
       this.toastTimer -= dt;
       if (this.toastTimer <= 0) this.toast = null;
+    }
+    if (this.shopMessageTimer > 0) {
+      this.shopMessageTimer -= dt;
+      if (this.shopMessageTimer <= 0) this.shopMessage = null;
+    }
+
+    if (this.freeCam) {
+      this.camera.position.copy(this.freeCam.pos);
+      this.camera.lookAt(this.freeCam.target);
     }
 
     if (this.composer) this.composer.render(dt);
@@ -364,6 +463,99 @@ export class Game {
     }
   }
 
+  /**
+   * One key does everything: shop at the kiosk, sleep in the house, get in and
+   * out of the car. Which of those it is depends on what the cat is standing
+   * next to, and the HUD shows the same answer as a prompt.
+   */
+  private handleInteraction() {
+    const p = this.player.position;
+    const near = (v: THREE.Vector3, r: number) =>
+      (p.x - v.x) ** 2 + (p.z - v.z) ** 2 < r * r;
+
+    if (this.car.occupied) {
+      this.prompt = "F — kliv ur bilen";
+      if (this.input.interactPressed) {
+        this.car.exit();
+        this.player.position.copy(this.car.doorStep);
+        this.player.velocity.set(0, 0, 0);
+        this.showToast("Parkerad", "Bilen står kvar där du lämnade den.");
+      }
+      return;
+    }
+
+    if (near(SHOP_POS, 6)) {
+      this.prompt = "F — handla i Zoobutiken";
+      if (this.input.interactPressed) this.openShop();
+      return;
+    }
+    if (this.car.spawned && near(this.car.position, 4)) {
+      this.prompt = "F — kör bilen";
+      if (this.input.interactPressed) {
+        this.car.enter();
+        this.audio.engineStart();
+        this.showToast("Bilen igång", "W gasar, S bromsar och backar, A och D styr. Space är handbroms.");
+      }
+      return;
+    }
+    if (this.shop.ownsHouse && near(HOUSE_POS, 4.5)) {
+      this.prompt = "F — sov i katthuset";
+      if (this.input.interactPressed && this.houseRest <= 0) {
+        this.player.stamina = 1;
+        this.houseRest = 2;
+        this.audio.purr(1.8);
+        this.showToast("Hemma", "Kudden är varm. Konditionen är återställd.");
+      }
+      return;
+    }
+    this.prompt = null;
+  }
+
+  /** Opens the shop overlay; the loop stops until the HUD closes it again. */
+  openShop() {
+    if (this.shopOpen) return;
+    this.shopOpen = true;
+    this.shopMessage = null;
+    this.emitState();
+    this.pause();
+  }
+
+  closeShop() {
+    this.shopOpen = false;
+    this.shopMessage = null;
+    this.resume();
+  }
+
+  /** Called by the HUD when a line in the catalogue is clicked. */
+  buy(id: string) {
+    const result = this.shop.buy(id);
+    if (!result.ok) {
+      this.shopMessage = result.reason ?? "Det gick inte.";
+      this.shopMessageTimer = 4;
+      this.audio.deny();
+      this.emitState();
+      return;
+    }
+    const item = result.item!;
+    if (item.kind === "coat" && item.coat) {
+      this.cat.setCoat(item.coat);
+      this.shopMessage = result.equippedOnly ? `${item.name} på.` : `${item.name} köpt och påtagen.`;
+      this.audio.purr(0.8);
+    } else if (item.kind === "house") {
+      this.houseGroup = buildCatHouse();
+      this.scene.add(this.houseGroup);
+      this.shopMessage = "Katthuset står på torget.";
+      this.audio.fanfare();
+    } else if (item.kind === "car") {
+      // Parked on the street outside, pointing down it.
+      this.car.spawn(CAR_POS.clone(), Math.PI / 2);
+      this.shopMessage = "Bilen står parkerad utanför.";
+      this.audio.fanfare();
+    }
+    this.shopMessageTimer = 4;
+    this.emitState();
+  }
+
   private checkLandmarks() {
     const p = this.player.position;
     for (const lm of this.world.landmarks) {
@@ -373,6 +565,7 @@ export class Game {
       if (dx * dx + dz * dz < lm.radius * lm.radius) {
         lm.found = true;
         this.score += 250;
+        this.shop.add(100);
         this.audio.purr(0.9);
         this.showToast(lm.name, lm.blurb);
       }
@@ -388,6 +581,8 @@ export class Game {
       birds: this.birdsScared,
       monkeys: this.monkeys.rescued,
       monkeyTotal: MONKEY_TOTAL,
+      money: this.shop.money,
+      coins: this.coins.collected,
       score: this.score,
       stamina: this.player.stamina,
       time: this.elapsed,
@@ -397,15 +592,29 @@ export class Game {
       climbing: this.player.climbing,
       wet: this.player.wetTimer > 0,
       fps: Math.round(this.fpsAvg),
+      prompt: this.prompt,
+      shopOpen: this.shopOpen,
+      shopItems: this.shop.state(),
+      shopMessage: this.shopMessage,
+      driving: this.car.occupied,
+      kmh: this.car.kmh,
+      ownsHouse: this.shop.ownsHouse,
+      ownsCar: this.shop.ownsCar,
       map: {
-        player: { x: this.player.position.x, z: this.player.position.z, yaw: this.player.yaw },
+        player: this.car.occupied
+          ? { x: this.car.position.x, z: this.car.position.z, yaw: this.car.heading }
+          : { x: this.player.position.x, z: this.player.position.z, yaw: this.player.yaw },
         fish: remaining,
         monkeys: this.monkeys.remaining,
+        coins: this.coins.remaining,
         landmarks: this.world.landmarks.map((l) => ({
           x: l.position.x,
           z: l.position.z,
           found: l.found,
         })),
+        shop: { x: SHOP_POS.x, z: SHOP_POS.z },
+        house: this.shop.ownsHouse ? { x: HOUSE_POS.x, z: HOUSE_POS.z } : null,
+        car: this.car.spawned ? { x: this.car.position.x, z: this.car.position.z } : null,
       },
     });
   }

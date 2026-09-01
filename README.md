@@ -2,7 +2,9 @@
 
 A 3D browser game. You are a white cat on a January night in Umeå: find thirty
 herring, rescue twelve small monkeys, discover nine landmarks, climb Sara
-Kulturhus and startle as many pigeons as possible.
+Kulturhus and startle as many pigeons as possible. Collect kronor off the
+pavements and the rooftops, and the shop on the square will sell you a new
+coat, a house of your own, and a car to drive around town in.
 
 Nothing is downloaded at runtime. The city, the cat, the monkeys, every texture
 and every sound are generated procedurally in the browser with three.js, canvas
@@ -24,7 +26,11 @@ npm run dev      # http://localhost:3000
 | `Space` held against a wall | climb it — facades, birch trunks, lamp posts |
 | `C` | crouch |
 | `E` | meow (scares birds within 14 m) |
+| `F` | use whatever you are standing next to — shop, cat house, car |
 | `Esc` | pause |
+
+Behind the wheel, `W` and `S` are throttle and brake (`S` again reverses), `A`
+and `D` steer, and `Space` is the handbrake. Ice is slippery in a car too.
 
 Touch devices get a virtual stick on the left half of the screen, drag-to-look
 on the right, and on-screen buttons.
@@ -71,6 +77,24 @@ The HUD in that build is plain DOM rather than React, so the file carries no
 framework; the game engine underneath is exactly the same code as the Next.js
 app.
 
+## Money, and what to do with it
+
+Kronor lie around the city in three denominations: silver on the pavements,
+gold out on the ice and over the bridges, and the big ones up on the roofs
+where only a climbing cat gets them. Herring, monkeys, landmarks and startled
+pigeons all pay out as well.
+
+Zoobutiken stands on Rådhustorget, a few metres from where you wake up. Walk up
+to the counter and press `F`:
+
+| | |
+| --- | --- |
+| Six coats | 200–900 kr — ginger, grey tabby, black, calico, russian blue, and a gold cat that is entirely unnecessary. The tabby texture is regenerated per coat, so a black cat gets real black stripes rather than a grey wash. Coats you own can be swapped back on for free. |
+| Katthus | 700 kr — your own house on the square, with a cushion and a lamp. Sleep in it to recover stamina. |
+| Bil | 1400 kr — a small estate car, parked on the street outside. |
+
+There is deliberately not quite enough money in the city to buy everything.
+
 ## Source layout
 
 ```
@@ -79,6 +103,9 @@ src/game/
   city.ts       procedural Umeå: blocks, landmarks, bridges, props, colliders
   cat.ts        the cat rig — jointed legs, nine-bone tail, ears, blinking
   monkeys.ts    the twelve monkeys and the parade that follows the cat
+  money.ts      kronor scattered across the city
+  shop.ts       the kiosk, the catalogue, the wallet and the cat house
+  car.ts        the car: model, arcade handling, headlights, chase camera
   player.ts     movement, AABB collision, climbing, third-person camera
   sky.ts        sky dome, stars, aurora shader, snowfall
   pickups.ts    herring, saucers of cream, scareable birds

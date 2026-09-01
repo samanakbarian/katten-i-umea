@@ -9,6 +9,7 @@ export class Input {
   jumpPressed = false;
   jumpHeld = false;
   meowPressed = false;
+  interactPressed = false;
   crouch = false;
   pointerLocked = false;
   touchActive = false;
@@ -17,6 +18,7 @@ export class Input {
   // through a frame. Latch them so a tap is never swallowed.
   private jumpLatch = false;
   private meowLatch = false;
+  private interactLatch = false;
   private dragging = false;
   private keys = new Set<string>();
   private buttons = new Set<string>();
@@ -29,7 +31,7 @@ export class Input {
       const code = e.code;
       if (
         [
-          "KeyW", "KeyA", "KeyS", "KeyD", "KeyE", "KeyC", "Space",
+          "KeyW", "KeyA", "KeyS", "KeyD", "KeyE", "KeyC", "KeyF", "Space",
           "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "ShiftLeft", "ShiftRight",
         ].includes(code)
       ) {
@@ -39,6 +41,7 @@ export class Input {
         if (!this.keys.has(code)) {
           if (code === "Space") this.jumpLatch = true;
           if (code === "KeyE") this.meowLatch = true;
+          if (code === "KeyF") this.interactLatch = true;
         }
         this.keys.add(code);
       } else {
@@ -128,11 +131,12 @@ export class Input {
   }
 
   /** Called by the on-screen buttons on touch devices. */
-  setButton(name: "jump" | "sprint" | "meow" | "crouch", down: boolean) {
+  setButton(name: "jump" | "sprint" | "meow" | "crouch" | "interact", down: boolean) {
     if (down) {
       if (!this.buttons.has(name)) {
         if (name === "jump") this.jumpLatch = true;
         if (name === "meow") this.meowLatch = true;
+        if (name === "interact") this.interactLatch = true;
       }
       this.buttons.add(name);
     } else {
@@ -153,8 +157,10 @@ export class Input {
   beginFrame() {
     this.jumpPressed = this.jumpLatch;
     this.meowPressed = this.meowLatch;
+    this.interactPressed = this.interactLatch;
     this.jumpLatch = false;
     this.meowLatch = false;
+    this.interactLatch = false;
 
     let x = 0;
     let y = 0;

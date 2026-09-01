@@ -8,23 +8,28 @@ import { fileURLToPath } from "node:url";
  * HTML file with no external requests. Useful for dropping the game on any
  * static host, or just opening it off a memory stick.
  *
- *   node standalone/build.mjs   ->   dist/katten-i-umea.html
+ *   node standalone/build.mjs         ->  dist/katten-i-umea.html
+ *   node standalone/build.mjs --dev   ->  dist/katten-i-umea.dev.html
+ *
+ * The --dev build keeps the window.__katt debug hooks that the production one
+ * compiles away, which is what the browser tests drive.
  */
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..");
 const outDir = join(root, "dist");
-const outFile = join(outDir, "katten-i-umea.html");
+const dev = process.argv.includes("--dev");
+const outFile = join(outDir, dev ? "katten-i-umea.dev.html" : "katten-i-umea.html");
 
 const result = await build({
   entryPoints: [join(here, "main.ts")],
   bundle: true,
-  minify: true,
+  minify: !dev,
   format: "iife",
   target: ["es2020"],
   write: false,
   legalComments: "none",
-  define: { "process.env.NODE_ENV": '"production"' },
+  define: { "process.env.NODE_ENV": dev ? '"development"' : '"production"' },
 });
 
 const js = result.outputFiles[0].text;

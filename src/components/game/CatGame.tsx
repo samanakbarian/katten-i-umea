@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Minimap } from "./Minimap";
 import type { Game, HudState, Quality } from "@/game/engine";
 
-type Phase = "menu" | "loading" | "playing" | "paused";
+type Phase = "menu" | "loading" | "playing" | "paused" | "shop";
 
 const EMPTY_HUD: HudState = {
   fish: 0,
@@ -13,6 +13,8 @@ const EMPTY_HUD: HudState = {
   birds: 0,
   monkeys: 0,
   monkeyTotal: 12,
+  money: 0,
+  coins: 0,
   score: 0,
   stamina: 1,
   time: 0,
@@ -22,7 +24,24 @@ const EMPTY_HUD: HudState = {
   climbing: false,
   wet: false,
   fps: 60,
-  map: { player: { x: 0, z: 0, yaw: 0 }, fish: [], monkeys: [], landmarks: [] },
+  prompt: null,
+  shopOpen: false,
+  shopItems: [],
+  shopMessage: null,
+  driving: false,
+  kmh: 0,
+  ownsHouse: false,
+  ownsCar: false,
+  map: {
+    player: { x: 0, z: 0, yaw: 0 },
+    fish: [],
+    monkeys: [],
+    coins: [],
+    landmarks: [],
+    shop: { x: -46, z: 22 },
+    house: null,
+    car: null,
+  },
 };
 
 function formatTime(t: number) {
@@ -41,12 +60,34 @@ export function CatGame() {
   const [muted, setMuted] = useState(false);
   const [isTouch, setIsTouch] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const shopWasOpen = useRef(false);
 
   useEffect(() => {
-    setIsTouch(typeof window !== "undefined" && "ontouchstart" in window);
+    // Reading this during render would disagree with the server-rendered HTML,
+    // so it has to happen once after hydration.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setIsTouch(
+      typeof window !== "undefined" &&
+        (window.matchMedia?.("(pointer: coarse)").matches ?? "ontouchstart" in window),
+    );
     // Nudge the default down on phones and low-core machines.
     if (typeof navigator !== "undefined" && (navigator.hardwareConcurrency ?? 8) <= 4) {
+       
       setQuality("low");
+    }
+  }, []);
+
+  // The engine opens the shop from inside the game loop and pauses itself while
+  // it is open; the overlay needs the mouse back, so the shell follows along as
+  // the state arrives.
+  const handleState = useCallback((s: HudState) => {
+    setHud(s);
+    if (s.shopOpen !== shopWasOpen.current) {
+      shopWasOpen.current = s.shopOpen;
+      if (s.shopOpen) {
+        setPhase("shop");
+        document.exitPointerLock?.();
+      }
     }
   }, []);
 
@@ -58,7 +99,7 @@ export function CatGame() {
     try {
       const { Game: GameCtor } = await import("@/game/engine");
       const game = new GameCtor(containerRef.current, canvasRef.current, quality, {
-        onState: setHud,
+        onState: handleState,
         onReady: () => undefined,
       });
       gameRef.current = game;
@@ -72,7 +113,7 @@ export function CatGame() {
       );
       setPhase("menu");
     }
-  }, [quality, muted]);
+  }, [quality, muted, handleState]);
 
   const resume = useCallback(() => {
     const g = gameRef.current;
@@ -95,7 +136,7 @@ export function CatGame() {
     const onLockChange = () => {
       const g = gameRef.current;
       if (!g || !g.isRunning) return;
-      if (!document.pointerLockElement && !("ontouchstart" in window)) {
+      if (!document.pointerLockElement && !window.matchMedia?.("(pointer: coarse)").matches) {
         g.pause();
         setPhase("paused");
       }
@@ -124,13 +165,26 @@ export function CatGame() {
     };
   }, []);
 
+  const closeShop = useCallback(() => {
+    const g = gameRef.current;
+    if (!g) return;
+    g.closeShop();
+    shopWasOpen.current = false;
+    setPhase("playing");
+    g.input.requestPointerLock();
+  }, []);
+
   const toggleMute = () => {
     const next = !muted;
     setMuted(next);
     gameRef.current?.audio.setMuted(next);
   };
 
-  const touchButton = (name: "jump" | "sprint" | "meow" | "crouch", label: string, cls: string) => (
+  const touchButton = (
+    name: "jump" | "sprint" | "meow" | "crouch" | "interact",
+    label: string,
+    cls: string,
+  ) => (
     <button
       key={name}
       className={`select-none rounded-full border border-white/20 text-sm font-semibold tracking-wide text-white/90 backdrop-blur active:scale-95 ${cls}`}
@@ -185,6 +239,12 @@ export function CatGame() {
                 <span>🥛 {hud.cream}</span>
               </div>
             </div>
+            <div className="rounded-xl border border-amber-300/25 bg-black/45 px-4 py-2 backdrop-blur-md">
+              <span className="text-lg font-bold tabular-nums text-amber-200">
+                {hud.money.toLocaleString("sv-SE")} kr
+              </span>
+              <span className="ml-2 text-xs text-white/45">🪙 {hud.coins}</span>
+            </div>
             <div className="rounded-xl border border-white/10 bg-black/45 px-4 py-2 text-sm backdrop-blur-md">
               <span className="tabular-nums font-semibold">{hud.score.toLocaleString("sv-SE")}</span>
               <span className="ml-2 text-white/50">poäng</span>
@@ -198,6 +258,19 @@ export function CatGame() {
               {hud.fps} fps
             </div>
           </div>
+
+          {hud.prompt && (
+            <div className="pointer-events-none absolute bottom-40 left-1/2 -translate-x-1/2 rounded-full border border-amber-300/30 bg-black/65 px-5 py-2 text-sm font-medium text-amber-100 backdrop-blur">
+              {hud.prompt}
+            </div>
+          )}
+
+          {hud.driving && (
+            <div className="pointer-events-none absolute bottom-14 right-6 text-right">
+              <div className="text-4xl font-black tabular-nums text-white/90">{hud.kmh}</div>
+              <div className="text-[10px] uppercase tracking-[0.25em] text-white/40">km/h</div>
+            </div>
+          )}
 
           {/* Stamina */}
           <div className="pointer-events-none absolute bottom-6 left-1/2 w-64 -translate-x-1/2">
@@ -226,7 +299,7 @@ export function CatGame() {
               </div>
               <div>
                 <Key>Space</Key> mot en vägg klättrar · <Key>C</Key> smyg · <Key>E</Key> jama ·{" "}
-                <Key>Esc</Key> paus
+                <Key>F</Key> använd · <Key>Esc</Key> paus
               </div>
             </div>
           )}
@@ -257,7 +330,7 @@ export function CatGame() {
               <div className="grid grid-cols-2 gap-3">
                 {touchButton("meow", "Jama", "h-14 w-14 bg-white/10")}
                 {touchButton("sprint", "Spring", "h-14 w-14 bg-white/10")}
-                {touchButton("crouch", "Smyg", "h-14 w-14 bg-white/10")}
+                {touchButton("interact", "Använd", "h-14 w-14 bg-white/10 text-xs")}
                 {touchButton("jump", "Hopp", "h-20 w-20 bg-amber-400/25 text-base")}
               </div>
             </div>
@@ -276,7 +349,8 @@ export function CatGame() {
             <p className="mt-3 text-lg text-white/70">
               A winter night in the city of birches. You are a white cat. There are thirty herring
               scattered across town, twelve small monkeys who would very much like to be found, nine
-              landmarks, and a great many pigeons who have not yet been startled.
+              landmarks, and a great many pigeons who have not yet been startled. Collect kronor,
+              and the shop on the square will sell you a new coat, a house of your own, and a car.
             </p>
 
             <div className="mt-7 flex items-center justify-center gap-2">
@@ -311,11 +385,94 @@ export function CatGame() {
               <div><Key>Space</Key> jump ×2</div>
               <div><Key>Space</Key> at a wall: climb</div>
               <div><Key>E</Key> meow (scares birds)</div>
+              <div><Key>F</Key> shop / house / car</div>
             </div>
             <p className="mt-6 text-xs text-white/35">
               Tip: cats climb. Sara Kulturhus is twenty floors tall, and there is a herring on the
               roof — and a monkey.
             </p>
+          </div>
+        </Overlay>
+      )}
+
+      {phase === "shop" && (
+        <Overlay>
+          <div className="w-full max-w-2xl">
+            <div className="text-center">
+              <div className="text-4xl">🛒</div>
+              <h2 className="mt-2 text-3xl font-bold">Zoobutiken</h2>
+              <p className="mt-1 text-sm text-white/55">
+                Öppet dygnet runt för katter med kontanter.
+              </p>
+              <p className="mt-3 text-2xl font-bold tabular-nums text-amber-200">
+                {hud.money.toLocaleString("sv-SE")} kr
+              </p>
+            </div>
+
+            <div className="mt-6 max-h-[46vh] space-y-2 overflow-y-auto pr-1">
+              {hud.shopItems.map((item) => {
+                const locked = !item.owned && !item.affordable;
+                return (
+                  <button
+                    key={item.id}
+                    disabled={locked}
+                    onClick={() => gameRef.current?.buy(item.id)}
+                    className={`flex w-full items-center gap-4 rounded-xl border px-4 py-3 text-left transition ${
+                      item.equipped
+                        ? "border-amber-300/50 bg-amber-300/15"
+                        : locked
+                          ? "border-white/5 bg-white/[0.02] opacity-45"
+                          : "border-white/10 bg-white/5 hover:bg-white/10"
+                    }`}
+                  >
+                    <span className="text-2xl">
+                      {item.kind === "car" ? "🚗" : item.kind === "house" ? "🏠" : "🎨"}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-baseline gap-2">
+                        <span className="font-semibold">{item.name}</span>
+                        {item.equipped && (
+                          <span className="rounded-full bg-amber-300/25 px-2 py-0.5 text-[10px] uppercase tracking-widest text-amber-200">
+                            på
+                          </span>
+                        )}
+                        {item.owned && !item.equipped && item.kind === "coat" && (
+                          <span className="text-[10px] uppercase tracking-widest text-white/35">
+                            ägd
+                          </span>
+                        )}
+                      </span>
+                      <span className="mt-0.5 block text-xs text-white/50">{item.blurb}</span>
+                    </span>
+                    <span className="shrink-0 text-right">
+                      {item.owned ? (
+                        <span className="text-xs uppercase tracking-widest text-white/35">
+                          {item.kind === "coat" ? (item.equipped ? "—" : "ta på") : "köpt"}
+                        </span>
+                      ) : (
+                        <span
+                          className={`tabular-nums font-semibold ${
+                            item.affordable ? "text-amber-200" : "text-white/35"
+                          }`}
+                        >
+                          {item.price.toLocaleString("sv-SE")} kr
+                        </span>
+                      )}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mt-4 flex items-center justify-between gap-4">
+              <span className="text-sm text-amber-200/90">{hud.shopMessage ?? ""}</span>
+              <button
+                onClick={closeShop}
+                className="rounded-full bg-amber-300 px-7 py-2.5 font-bold text-black transition hover:scale-[1.03]"
+              >
+                Klar
+              </button>
+            </div>
           </div>
         </Overlay>
       )}
@@ -336,10 +493,11 @@ export function CatGame() {
         <Overlay>
           <div className="max-w-md text-center">
             <h2 className="text-3xl font-bold">Paus</h2>
-            <div className="mt-5 grid grid-cols-4 gap-3 text-sm">
+            <div className="mt-5 grid grid-cols-3 gap-3 text-sm sm:grid-cols-5">
               <Stat label="Strömming" value={`${hud.fish}/${hud.fishTotal}`} />
               <Stat label="Apor" value={`${hud.monkeys}/${hud.monkeyTotal}`} />
               <Stat label="Platser" value={`${foundCount}/${hud.landmarks.length}`} />
+              <Stat label="Kronor" value={hud.money.toLocaleString("sv-SE")} />
               <Stat label="Poäng" value={hud.score.toLocaleString("sv-SE")} />
             </div>
             {hud.landmarks.some((l) => l.found) && (

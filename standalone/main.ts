@@ -6,7 +6,7 @@ import { Game, type HudState, type Quality } from "../src/game/engine";
  * with no framework and nothing to fetch.
  */
 
-type Phase = "menu" | "loading" | "playing" | "paused";
+type Phase = "menu" | "loading" | "playing" | "paused" | "shop";
 
 const MAP = { minX: -180, maxX: 200, minZ: -170, maxZ: 205 };
 
@@ -22,6 +22,7 @@ app.innerHTML = `
         <div class="count small"><span class="emoji">🐒</span><b id="monkeys">0</b><span class="of" id="monkeyTotal">/12</span><span class="label">apor</span></div>
         <div class="row"><span id="places">🏛 0/9 platser</span><span id="birds">🕊 0</span><span id="cream">🥛 0</span></div>
       </div>
+      <div class="panel money"><b id="money">0 kr</b><span class="coins">🪙 <span id="coins">0</span></span></div>
       <div class="panel score"><b id="score">0</b><span class="label">poäng</span><span id="time">0:00</span></div>
     </div>
 
@@ -31,6 +32,10 @@ app.innerHTML = `
       <button id="pauseBtn" class="chip">Paus</button>
     </div>
 
+    <div id="prompt" class="prompt" hidden></div>
+
+    <div id="speedo" class="speedo" hidden><b id="kmh">0</b><span>km/h</span></div>
+
     <div class="stamina">
       <div class="bar"><div id="staminaFill"></div></div>
       <div class="stamina-label" id="staminaLabel">kondition</div>
@@ -38,7 +43,7 @@ app.innerHTML = `
 
     <div class="hints" id="hints">
       <div><kbd>W A S D</kbd> spring · <kbd>Shift</kbd> sprinta · <kbd>Space</kbd> hoppa / dubbelhopp</div>
-      <div><kbd>Space</kbd> mot en vägg klättrar · <kbd>C</kbd> smyg · <kbd>E</kbd> jama · <kbd>Esc</kbd> paus</div>
+      <div><kbd>Space</kbd> mot en vägg klättrar · <kbd>C</kbd> smyg · <kbd>E</kbd> jama · <kbd>F</kbd> använd · <kbd>Esc</kbd> paus</div>
     </div>
 
     <button id="muteBtn" class="chip mute" aria-label="Ljud">🔊</button>
@@ -50,7 +55,7 @@ app.innerHTML = `
       <div class="touch-buttons">
         <button data-btn="meow">Jama</button>
         <button data-btn="sprint">Spring</button>
-        <button data-btn="crouch">Smyg</button>
+        <button data-btn="interact">Använd</button>
         <button data-btn="jump" class="big">Hopp</button>
       </div>
     </div>
@@ -63,7 +68,8 @@ app.innerHTML = `
       <p class="lede">
         A winter night in the city of birches. You are a white cat. There are thirty herring
         scattered across town, twelve small monkeys who would very much like to be found, nine
-        landmarks, and a great many pigeons who have not yet been startled.
+        landmarks, and a great many pigeons who have not yet been startled. Collect kronor, and
+        the shop on the square will sell you a new coat, a house of your own, and a car.
       </p>
       <div class="quality">
         <button data-q="high" class="q active">Vackert (bloom, skuggor)</button>
@@ -78,11 +84,28 @@ app.innerHTML = `
         <div><kbd>Space</kbd> jump ×2</div>
         <div><kbd>Space</kbd> at a wall: climb</div>
         <div><kbd>E</kbd> meow (scares birds)</div>
+        <div><kbd>F</kbd> shop / house / car</div>
       </div>
       <p class="tip">
         Tip: cats climb. Sara Kulturhus is twenty floors tall, and there is a herring on the roof
         — and a monkey.
       </p>
+    </div>
+  </div>
+
+  <div id="shop" class="overlay" hidden>
+    <div class="sheet wide">
+      <div class="shop-head">
+        <div class="cat-emoji">🛒</div>
+        <h2>Zoobutiken</h2>
+        <p class="tip">Öppet dygnet runt för katter med kontanter.</p>
+        <p class="wallet"><span id="shopMoney">0</span> kr</p>
+      </div>
+      <div id="shopList" class="shop-list"></div>
+      <div class="shop-foot">
+        <span id="shopMessage" class="shop-message"></span>
+        <button id="shopClose" class="play small">Klar</button>
+      </div>
     </div>
   </div>
 
@@ -101,6 +124,7 @@ app.innerHTML = `
         <div class="stat"><b id="pFish">0/30</b><span>Strömming</span></div>
         <div class="stat"><b id="pMonkeys">0/12</b><span>Apor</span></div>
         <div class="stat"><b id="pPlaces">0/9</b><span>Platser</span></div>
+        <div class="stat"><b id="pMoney">0</b><span>Kronor</span></div>
         <div class="stat"><b id="pScore">0</b><span>Poäng</span></div>
       </div>
       <div id="pLandmarks" class="chips"></div>
@@ -117,6 +141,7 @@ const hudEl = $("hud");
 const menuEl = $("menu");
 const loadingEl = $("loading");
 const pausedEl = $("paused");
+const shopEl = $("shop");
 const toastEl = $("toast");
 const minimap = $<HTMLCanvasElement>("minimap");
 
@@ -131,8 +156,9 @@ let lastToastKey = -1;
  * bounces straight back to the pause screen on any browser that denies it.
  */
 let lockGraceUntil = 0;
+let shopWasOpen = false;
 
-const isTouch = "ontouchstart" in window;
+const isTouch = window.matchMedia?.("(pointer: coarse)").matches ?? "ontouchstart" in window;
 if (isTouch) {
   $("touch").hidden = false;
   $("hints").hidden = true;
@@ -154,6 +180,7 @@ function setPhase(p: Phase) {
   menuEl.hidden = p !== "menu";
   loadingEl.hidden = p !== "loading";
   pausedEl.hidden = p !== "paused";
+  shopEl.hidden = p !== "shop";
   hudEl.hidden = p !== "playing";
 }
 
@@ -214,6 +241,8 @@ function drawMinimap(map: HudState["map"]) {
     mctx.arc(sx(f.x), sy(f.z), 1.9, 0, Math.PI * 2);
     mctx.fill();
   }
+  mctx.fillStyle = "rgba(232,192,90,0.75)";
+  for (const c of map.coins) mctx.fillRect(sx(c.x) - 1, sy(c.z) - 1, 2, 2);
   for (const m of map.monkeys) {
     mctx.fillStyle = "#ffc07a";
     mctx.beginPath();
@@ -232,6 +261,17 @@ function drawMinimap(map: HudState["map"]) {
       mctx.stroke();
     }
   }
+
+  const marker = (x: number, z: number, glyph: string, color: string) => {
+    mctx.fillStyle = color;
+    mctx.font = "bold 9px system-ui, sans-serif";
+    mctx.textAlign = "center";
+    mctx.textBaseline = "middle";
+    mctx.fillText(glyph, sx(x), sy(z));
+  };
+  marker(map.shop.x, map.shop.z, "S", "#7fe0ff");
+  if (map.house) marker(map.house.x, map.house.z, "H", "#ffb37a");
+  if (map.car) marker(map.car.x, map.car.z, "B", "#9fd0ff");
 
   mctx.save();
   mctx.translate(sx(map.player.x), sy(map.player.z));
@@ -258,6 +298,9 @@ function onState(s: HudState) {
   $("places").textContent = `🏛 ${found}/${s.landmarks.length} platser`;
   $("birds").textContent = `🕊 ${s.birds}`;
   $("cream").textContent = `🥛 ${s.cream}`;
+  $("money").textContent = `${s.money.toLocaleString("sv-SE")} kr`;
+  $("coins").textContent = String(s.coins);
+  $("shopMoney").textContent = s.money.toLocaleString("sv-SE");
   $("score").textContent = s.score.toLocaleString("sv-SE");
   $("time").textContent = formatTime(s.time);
   $("fps").textContent = String(s.fps);
@@ -283,10 +326,30 @@ function onState(s: HudState) {
     toastEl.hidden = true;
   }
 
+  const promptEl = $("prompt");
+  promptEl.hidden = !s.prompt;
+  if (s.prompt) promptEl.textContent = s.prompt;
+
+  const speedo = $("speedo");
+  speedo.hidden = !s.driving;
+  if (s.driving) $("kmh").textContent = String(s.kmh);
+
+  // The engine opens the shop from inside the loop and pauses itself; the
+  // overlay needs the mouse back.
+  if (s.shopOpen !== shopWasOpen) {
+    shopWasOpen = s.shopOpen;
+    if (s.shopOpen) {
+      setPhase("shop");
+      document.exitPointerLock?.();
+    }
+  }
+  if (s.shopOpen) renderShop(s);
+
   // Pause panel mirrors the same numbers.
   $("pFish").textContent = `${s.fish}/${s.fishTotal}`;
   $("pMonkeys").textContent = `${s.monkeys}/${s.monkeyTotal}`;
   $("pPlaces").textContent = `${found}/${s.landmarks.length}`;
+  $("pMoney").textContent = s.money.toLocaleString("sv-SE");
   $("pScore").textContent = s.score.toLocaleString("sv-SE");
   $("pLandmarks").innerHTML = s.landmarks
     .map(
@@ -296,6 +359,34 @@ function onState(s: HudState) {
     .join("");
 
   drawMinimap(s.map);
+}
+
+function renderShop(s: HudState) {
+  const list = $("shopList");
+  list.innerHTML = s.shopItems
+    .map((item) => {
+      const locked = !item.owned && !item.affordable;
+      const glyph = item.kind === "car" ? "🚗" : item.kind === "house" ? "🏠" : "🎨";
+      const right = item.owned
+        ? `<span class="owned">${item.kind === "coat" ? (item.equipped ? "—" : "ta på") : "köpt"}</span>`
+        : `<span class="price${item.affordable ? " ok" : ""}">${item.price.toLocaleString("sv-SE")} kr</span>`;
+      const tag = item.equipped ? `<span class="tag">på</span>` : "";
+      return `<button class="shop-item${item.equipped ? " equipped" : ""}${
+        locked ? " locked" : ""
+      }" data-buy="${item.id}"${locked ? " disabled" : ""}>
+        <span class="glyph">${glyph}</span>
+        <span class="shop-text">
+          <span class="shop-name">${escapeHtml(item.name)}${tag}</span>
+          <span class="shop-blurb">${escapeHtml(item.blurb)}</span>
+        </span>
+        ${right}
+      </button>`;
+    })
+    .join("");
+  for (const b of list.querySelectorAll<HTMLButtonElement>("[data-buy]")) {
+    b.addEventListener("click", () => game?.buy(b.dataset.buy!));
+  }
+  $("shopMessage").textContent = s.shopMessage ?? "";
 }
 
 function escapeHtml(s: string) {
@@ -339,6 +430,15 @@ function resume() {
   setPhase("playing");
 }
 
+$("shopClose").addEventListener("click", () => {
+  if (!game) return;
+  game.closeShop();
+  shopWasOpen = false;
+  lockGraceUntil = performance.now() + 1000;
+  setPhase("playing");
+  game.input.requestPointerLock();
+});
+
 $("playBtn").addEventListener("click", launch);
 $("resumeBtn").addEventListener("click", resume);
 $("pauseBtn").addEventListener("click", pause);
@@ -349,7 +449,7 @@ $("muteBtn").addEventListener("click", () => {
 });
 
 document.querySelectorAll<HTMLButtonElement>("[data-btn]").forEach((b) => {
-  const name = b.dataset.btn as "jump" | "sprint" | "meow" | "crouch";
+  const name = b.dataset.btn as "jump" | "sprint" | "meow" | "crouch" | "interact";
   const down = (e: Event) => {
     e.preventDefault();
     game?.input.setButton(name, true);
