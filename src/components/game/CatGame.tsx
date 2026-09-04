@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Minimap } from "./Minimap";
 import type { Game, HudState, Quality } from "@/game/engine";
+import { clearSave, describeSave, readSave, type SaveData } from "@/game/save";
 
 type Phase = "menu" | "loading" | "playing" | "paused" | "shop";
 
@@ -32,6 +33,7 @@ const EMPTY_HUD: HudState = {
   kmh: 0,
   ownsHouse: false,
   ownsCar: false,
+  hasDog: false,
   map: {
     player: { x: 0, z: 0, yaw: 0 },
     fish: [],
@@ -41,6 +43,7 @@ const EMPTY_HUD: HudState = {
     shop: { x: -46, z: 22 },
     house: null,
     car: null,
+    dog: null,
   },
 };
 
@@ -61,11 +64,13 @@ export function CatGame() {
   const [isTouch, setIsTouch] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const shopWasOpen = useRef(false);
+  const [save, setSave] = useState<SaveData | null>(null);
 
   useEffect(() => {
     // Reading this during render would disagree with the server-rendered HTML,
     // so it has to happen once after hydration.
     // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSave(readSave());
     setIsTouch(
       typeof window !== "undefined" &&
         (window.matchMedia?.("(pointer: coarse)").matches ?? "ontouchstart" in window),
@@ -91,17 +96,22 @@ export function CatGame() {
     }
   }, []);
 
-  const launch = useCallback(async () => {
+  const launch = useCallback(
+    async (resume = false) => {
     if (gameRef.current || !containerRef.current || !canvasRef.current) return;
+    if (!resume) clearSave();
     setPhase("loading");
     // Let the loading screen paint before we spend a second building the city.
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
     try {
       const { Game: GameCtor } = await import("@/game/engine");
-      const game = new GameCtor(containerRef.current, canvasRef.current, quality, {
-        onState: handleState,
-        onReady: () => undefined,
-      });
+      const game = new GameCtor(
+        containerRef.current,
+        canvasRef.current,
+        quality,
+        { onState: handleState, onReady: () => undefined },
+        { restore: resume ? readSave() : null },
+      );
       gameRef.current = game;
       game.audio.setMuted(muted);
       game.start();
@@ -113,7 +123,9 @@ export function CatGame() {
       );
       setPhase("menu");
     }
-  }, [quality, muted, handleState]);
+    },
+    [quality, muted, handleState],
+  );
 
   const resume = useCallback(() => {
     const g = gameRef.current;
@@ -147,7 +159,9 @@ export function CatGame() {
         setPhase("paused");
       }
     };
+    const onSave = () => gameRef.current?.save();
     const onResize = () => gameRef.current?.resize();
+    window.addEventListener("pagehide", onSave);
     document.addEventListener("pointerlockchange", onLockChange);
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("resize", onResize);
@@ -155,6 +169,7 @@ export function CatGame() {
       document.removeEventListener("pointerlockchange", onLockChange);
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("resize", onResize);
+      window.removeEventListener("pagehide", onSave);
     };
   }, []);
 
@@ -398,11 +413,32 @@ export function CatGame() {
             </div>
 
             <button
-              onClick={launch}
+              onClick={() => void launch(false)}
               className="mt-6 rounded-full bg-gradient-to-r from-amber-300 to-orange-400 px-10 py-4 text-lg font-bold text-black shadow-[0_0_40px_rgba(251,191,36,0.35)] transition hover:scale-[1.03]"
             >
-              Släpp ut katten
+              {save ? "Ny natt" : "Släpp ut katten"}
             </button>
+
+            {save && (
+              <div className="mt-4 flex flex-col items-center gap-1.5">
+                <button
+                  onClick={() => void launch(true)}
+                  className="rounded-full bg-amber-300 px-8 py-3 font-bold text-black transition hover:scale-[1.03]"
+                >
+                  Fortsätt natten
+                </button>
+                <span className="text-xs tabular-nums text-white/55">{describeSave(save)}</span>
+                <button
+                  onClick={() => {
+                    clearSave();
+                    setSave(null);
+                  }}
+                  className="text-xs text-white/35 underline underline-offset-4 hover:text-white/60"
+                >
+                  Börja om från början
+                </button>
+              </div>
+            )}
 
             {error && <p className="mt-4 text-sm text-red-300">{error}</p>}
 

@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { World } from "./city";
 import { clamp, damp, mulberry32, rand } from "./utils";
+import { PathTrail } from "./trail";
 import { radialSprite } from "./textures";
 
 /**
@@ -210,6 +211,7 @@ export class Monkeys {
   private monkeys: Monkey[] = [];
   private parade: Monkey[] = [];
   private beacons: THREE.Sprite[] = [];
+  private trail = new PathTrail();
   rescued = 0;
   readonly total: number;
 
@@ -282,6 +284,24 @@ export class Monkeys {
     void world;
   }
 
+  serialize() {
+    return this.monkeys.reduce<number[]>((acc, m, i) => (m.rescued ? (acc.push(i), acc) : acc), []);
+  }
+
+  restore(indices: number[], catPos: THREE.Vector3) {
+    for (const i of indices ?? []) {
+      const m = this.monkeys[i];
+      if (!m || m.rescued) continue;
+      m.rescued = true;
+      m.paradeIndex = this.parade.length;
+      m.pos.copy(catPos);
+      m.group.position.copy(catPos);
+      this.parade.push(m);
+      this.beacons[i].visible = false;
+      this.rescued++;
+    }
+  }
+
   /** Distance of each parade monkey from the cat, for diagnostics. */
   paradeDebug(catPos: THREE.Vector3) {
     return this.parade.map((m) => Math.round(m.pos.distanceTo(catPos) * 100) / 100);
@@ -292,46 +312,6 @@ export class Monkeys {
     return this.monkeys.filter((m) => !m.rescued).map((m) => ({ x: m.home.x, z: m.home.z }));
   }
 
-  /**
-   * The parade walks the cat's own path rather than each monkey chasing the one
-   * ahead: a chain lets a single straggler drag the whole line off, and a trail
-   * also means they follow you round corners and up onto roofs instead of
-   * cutting through the building.
-   */
-  private trail: { p: THREE.Vector3; d: number }[] = [];
-  private trailLength = 0;
-
-  private pushTrail(catPos: THREE.Vector3) {
-    const last = this.trail[this.trail.length - 1];
-    if (!last) {
-      this.trail.push({ p: catPos.clone(), d: 0 });
-      return;
-    }
-    const step = last.p.distanceTo(catPos);
-    if (step < 0.1) return;
-    this.trailLength += step;
-    this.trail.push({ p: catPos.clone(), d: this.trailLength });
-    // Keep only as much history as the tail of the line still needs.
-    const needed = this.trailLength - (this.parade.length + 2) * SPACING - 2;
-    while (this.trail.length > 2 && this.trail[0].d < needed) this.trail.shift();
-  }
-
-  /** The point `back` metres along the path behind the cat. */
-  private sampleTrail(back: number): THREE.Vector3 | null {
-    if (!this.trail.length) return null;
-    const target = this.trailLength - back;
-    if (target <= this.trail[0].d) return this.trail[0].p;
-    for (let i = this.trail.length - 1; i > 0; i--) {
-      const a = this.trail[i - 1];
-      const b = this.trail[i];
-      if (a.d <= target && target <= b.d) {
-        const span = b.d - a.d;
-        const t = span > 1e-5 ? (target - a.d) / span : 0;
-        return a.p.clone().lerp(b.p, t);
-      }
-    }
-    return this.trail[this.trail.length - 1].p;
-  }
 
   /**
    * Returns how many monkeys joined the parade this frame. catPos is the cat's
@@ -339,7 +319,7 @@ export class Monkeys {
    */
   update(dt: number, time: number, catPos: THREE.Vector3, catYaw: number) {
     let found = 0;
-    if (this.parade.length) this.pushTrail(catPos);
+    if (this.parade.length) this.trail.push(catPos, (this.parade.length + 2) * SPACING + 2);
 
     for (let i = 0; i < this.monkeys.length; i++) {
       const m = this.monkeys[i];
@@ -425,7 +405,8 @@ export class Monkeys {
       }
 
       // --- in the parade ---------------------------------------------------
-      const target = this.sampleTrail((m.paradeIndex + 1) * SPACING) ?? catPos;
+      const back = (m.paradeIndex + 1) * SPACING;
+      const target = (this.trail.travelled >= back ? this.trail.sample(back) : null) ?? m.pos;
       const before = tmpPrev.copy(m.pos);
 
       // A monkey that somehow ends up on the wrong side of town rejoins rather

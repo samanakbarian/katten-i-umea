@@ -255,6 +255,32 @@ export class GameAudio {
     osc.stop(t + 1.15);
   }
 
+  /** Simba: two short syllables, low and pleased with himself. */
+  bark() {
+    if (!this.ctx || !this.master) return;
+    const t0 = this.ctx.currentTime;
+    for (let i = 0; i < 2; i++) {
+      const t = t0 + i * 0.17;
+      const osc = this.ctx.createOscillator();
+      osc.type = "sawtooth";
+      const base = 180 + Math.random() * 40 - i * 25;
+      osc.frequency.setValueAtTime(base * 1.5, t);
+      osc.frequency.exponentialRampToValueAtTime(base * 0.75, t + 0.11);
+      const bp = this.ctx.createBiquadFilter();
+      bp.type = "bandpass";
+      bp.Q.value = 1.4;
+      bp.frequency.setValueAtTime(1100, t);
+      bp.frequency.exponentialRampToValueAtTime(520, t + 0.12);
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.2, t + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.14);
+      osc.connect(bp).connect(g).connect(this.master);
+      osc.start(t);
+      osc.stop(t + 0.16);
+    }
+  }
+
   /** Not enough kronor. */
   deny() {
     if (!this.ctx || !this.master) return;

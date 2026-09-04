@@ -132,6 +132,22 @@ export class Coins {
     this.totalValue = this.coins.reduce((sum, c) => sum + c.value, 0);
   }
 
+  serialize() {
+    return this.coins.reduce<number[]>((acc, c, i) => (c.taken ? (acc.push(i), acc) : acc), []);
+  }
+
+  restore(indices: number[]) {
+    for (const i of indices ?? []) {
+      const c = this.coins[i];
+      if (!c) continue;
+      c.taken = true;
+      c.pop = 0;
+      c.mesh.visible = false;
+      c.glow.visible = false;
+    }
+    this.collected = this.coins.filter((c) => c.taken).length;
+  }
+
   /** For the minimap. */
   get remaining() {
     return this.coins.filter((c) => !c.taken).map((c) => ({ x: c.home.x, z: c.home.z }));

@@ -202,6 +202,30 @@ export class Pickups {
     this.group.add(this.sparkle);
   }
 
+  /** Indices of what has already been collected, for the save file. */
+  serialize() {
+    const taken = (items: Item[]) =>
+      items.reduce<number[]>((acc, item, i) => (item.taken ? (acc.push(i), acc) : acc), []);
+    return { fish: taken(this.fish), cream: taken(this.saucers) };
+  }
+
+  restore(data: { fish: number[]; cream: number[] }) {
+    const hide = (items: Item[], indices: number[]) => {
+      for (const i of indices) {
+        const item = items[i];
+        if (!item) continue;
+        item.taken = true;
+        item.pop = 0;
+        item.mesh.visible = false;
+        item.glow.visible = false;
+      }
+    };
+    hide(this.fish, data.fish ?? []);
+    hide(this.saucers, data.cream ?? []);
+    this.fishTaken = this.fish.filter((f) => f.taken).length;
+    this.creamTaken = this.saucers.filter((s) => s.taken).length;
+  }
+
   burst(at: THREE.Vector3, color: THREE.Color, n = 24) {
     const pos = this.sparkle.geometry.attributes.position as THREE.BufferAttribute;
     const col = this.sparkle.geometry.attributes.color as THREE.BufferAttribute;
@@ -365,10 +389,18 @@ export class Birds {
   }
 
   /** Returns how many birds were startled this frame. */
-  update(dt: number, time: number, catPos: THREE.Vector3, meowed: boolean) {
+  update(
+    dt: number,
+    time: number,
+    catPos: THREE.Vector3,
+    meowed: boolean,
+    dogPos?: THREE.Vector3,
+  ) {
     let startled = 0;
     for (const b of this.birds) {
-      const d = b.group.position.distanceTo(catPos);
+      // A dog counts as a reason to leave, and from further off than a cat.
+      const dDog = dogPos ? b.group.position.distanceTo(dogPos) : Infinity;
+      const d = Math.min(b.group.position.distanceTo(catPos), dDog * 0.65);
 
       if (b.state === "idle") {
         b.peck -= dt;
@@ -381,7 +413,8 @@ export class Birds {
         if (d < 3.2 || (meowed && d < 14)) {
           b.state = "flee";
           b.t = 0;
-          const away = b.group.position.clone().sub(catPos).setY(0);
+          const from = dogPos && dDog < b.group.position.distanceTo(catPos) ? dogPos : catPos;
+          const away = b.group.position.clone().sub(from).setY(0);
           if (away.lengthSq() < 0.01) away.set(1, 0, 0);
           away.normalize();
           b.vel.set(away.x * 5.5, 6.5, away.z * 5.5);

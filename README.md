@@ -95,9 +95,27 @@ to the counter and press `F`:
 | --- | --- |
 | Six coats | 200–900 kr — ginger, grey tabby, black, calico, russian blue, and a gold cat that is entirely unnecessary. The tabby texture is regenerated per coat, so a black cat gets real black stripes rather than a grey wash. Coats you own can be swapped back on for free. |
 | Katthus | 700 kr — your own house on the square, with a cushion and a lamp. Sleep in it to recover stamina. |
+| Simba | 1200 kr — a dog. He walks your path a metre and a half back, sits down when you stop, wags harder the faster you go, barks when you meow, and scatters pigeons from further off than a cat can. |
 | Bil | 1400 kr — a small estate car, parked on the street outside. |
 
+Everything you own stands under a column of light — amber over the cat house,
+blue over the shop, pale blue over wherever you parked — so you can find it
+again from the other side of town.
+
 There is deliberately not quite enough money in the city to buy everything.
+
+## Saving
+
+The night is written to `localStorage` after every purchase, whenever the game
+is paused, when the tab goes to the background, and on a twenty-second
+heartbeat. The title screen then offers **Fortsätt natten** next to a summary
+of where you left off, with **Börja om från början** to throw it away.
+
+A save holds indices rather than objects — the city is generated from a fixed
+seed, so herring #17 is always the same herring. That keeps it to a couple of
+kilobytes and means it survives any change that does not renumber the world.
+Everything the browser might do to storage is caught: a private window or
+blocked site data costs you the save, never the game.
 
 ## Source layout
 
@@ -110,6 +128,9 @@ src/game/
   money.ts      kronor scattered across the city
   shop.ts       the kiosk, the catalogue, the wallet and the cat house
   car.ts        the car: model, arcade handling, headlights, chase camera
+  dog.ts        Simba
+  trail.ts      the breadcrumb path that followers walk
+  save.ts       reading and writing the night to localStorage
   player.ts     movement, AABB collision, climbing, third-person camera
   sky.ts        sky dome, stars, aurora shader, snowfall
   pickups.ts    herring, saucers of cream, scareable birds

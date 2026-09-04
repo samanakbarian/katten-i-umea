@@ -109,6 +109,7 @@ export function Minimap({ map, size = 168 }: { map: HudState["map"]; size?: numb
     marker(map.shop.x, map.shop.z, "S", "#7fe0ff");
     if (map.house) marker(map.house.x, map.house.z, "H", "#ffb37a");
     if (map.car) marker(map.car.x, map.car.z, "B", "#9fd0ff");
+    if (map.dog) marker(map.dog.x, map.dog.z, "S", "#ffcf8a");
 
     // The cat.
     const px = sx(map.player.x);

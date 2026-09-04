@@ -10,7 +10,7 @@ import { radialSprite, snowTexture } from "./textures";
  * about windowsills — a car.
  */
 
-export type ItemKind = "coat" | "house" | "car";
+export type ItemKind = "coat" | "house" | "car" | "dog";
 
 export interface ShopItem {
   id: string;
@@ -134,6 +134,13 @@ export const CATALOGUE: ShopItem[] = [
     kind: "house",
   },
   {
+    id: "dog",
+    name: "Simba",
+    blurb: "En hund. Följer dig överallt, sätter sig när du stannar, och duvorna gillar honom inte.",
+    price: 1200,
+    kind: "dog",
+  },
+  {
     id: "car",
     name: "Bil",
     blurb: "En liten kombi. Umeå är stort och tassarna är små.",
@@ -148,6 +155,44 @@ export const SHOP_POS = new THREE.Vector3(-46, 0, 22);
 // clear of Rådhuset itself, whose footprint reaches z = 22.5.
 export const HOUSE_POS = new THREE.Vector3(-44, 0, 12);
 export const CAR_POS = new THREE.Vector3(-57, 0, 14);
+
+/**
+ * A soft column of light standing over something you own, so you can find it
+ * again from the other side of the square. Additive and depth-tested off at the
+ * top so it reads through the snowfall.
+ */
+export function beacon(color: THREE.ColorRepresentation, height = 16) {
+  const geo = new THREE.CylinderGeometry(0.45, 0.9, height, 12, 1, true);
+  geo.translate(0, height / 2, 0);
+  const canvas = document.createElement("canvas");
+  canvas.width = 4;
+  canvas.height = 64;
+  const ctx = canvas.getContext("2d")!;
+  const grad = ctx.createLinearGradient(0, 64, 0, 0);
+  grad.addColorStop(0, "rgba(255,255,255,0.85)");
+  grad.addColorStop(0.35, "rgba(255,255,255,0.28)");
+  grad.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 4, 64);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+
+  const mesh = new THREE.Mesh(
+    geo,
+    new THREE.MeshBasicMaterial({
+      map: tex,
+      color: new THREE.Color(color),
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+      toneMapped: false,
+      opacity: 0.5,
+    }),
+  );
+  mesh.renderOrder = 6;
+  return mesh;
+}
 
 /** The kiosk itself: a small lit shed with a sign, built into the world. */
 export function buildShop(colliders: ColliderGrid) {
@@ -205,6 +250,10 @@ export function buildShop(colliders: ColliderGrid) {
   halo.scale.setScalar(6);
   group.add(halo);
 
+  const column = beacon("#7fe0ff", 20);
+  column.position.set(x, 3.6, z);
+  group.add(column);
+
   colliders.add(makeCollider(x, z, 6, 3.6, 4.5));
   return group;
 }
@@ -213,7 +262,7 @@ export function buildShop(colliders: ColliderGrid) {
  * The cat house. Built only once bought, so it appears on the square with a
  * puff of sparkles the moment you can afford it.
  */
-export function buildCatHouse() {
+export function buildCatHouse(): { group: THREE.Group; light: THREE.PointLight } {
   const group = new THREE.Group();
   const x = HOUSE_POS.x;
   const z = HOUSE_POS.z;
@@ -257,9 +306,11 @@ export function buildCatHouse() {
     ),
   );
 
-  const warm = new THREE.PointLight(0xffc98a, 2.2, 7, 2);
-  warm.position.set(x, 1.1, z);
-  group.add(warm);
+  // Kept out of the group and handed back separately: the house is built at
+  // startup and only revealed when bought, and a light that comes and goes
+  // would recompile every material in the city at that moment.
+  const light = new THREE.PointLight(0xffc98a, 0, 7, 2);
+  light.position.set(x, 1.1, z);
 
   const halo = new THREE.Sprite(
     new THREE.SpriteMaterial({
@@ -275,15 +326,23 @@ export function buildCatHouse() {
   halo.scale.setScalar(4);
   group.add(halo);
 
-  return group;
+  const column = beacon("#ffb45c");
+  column.position.set(x, 2.3, z);
+  group.add(column);
+
+  group.visible = false;
+  return { group, light };
 }
+
+/** Turned on when the house is paid for. */
+export const HOUSE_LIGHT_INTENSITY = 2.2;
 
 /** Wallet, inventory and the till. */
 export class Shop {
   money = 0;
   earned = 0;
   spent = 0;
-  private owned = new Set<string>(["coat-white"]);
+  private owned: Set<string> = new Set(["coat-white"]);
   equippedCoat = "coat-white";
 
   add(kr: number) {
@@ -328,6 +387,16 @@ export class Shop {
     this.owned.add(id);
     if (item.kind === "coat") this.equippedCoat = id;
     return { ok: true, item };
+  }
+
+  serialize() {
+    return { money: this.money, owned: [...this.owned], coat: this.equippedCoat };
+  }
+
+  restore(data: { money: number; owned: string[]; coat: string }) {
+    this.money = data.money ?? 0;
+    this.owned = new Set(data.owned?.length ? data.owned : ["coat-white"]);
+    this.equippedCoat = data.coat ?? "coat-white";
   }
 
   /** The catalogue as the HUD needs to render it. */

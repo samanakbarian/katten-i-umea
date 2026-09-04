@@ -1,4 +1,5 @@
 import { Game, type HudState, type Quality } from "../src/game/engine";
+import { clearSave, describeSave, readSave } from "../src/game/save";
 
 /**
  * Entry point for the single-file build. Same engine as the Next.js app, but
@@ -77,6 +78,11 @@ app.innerHTML = `
         <button data-q="low" class="q">Snabbt</button>
       </div>
       <button id="playBtn" class="play">Släpp ut katten</button>
+      <div id="resumeRow" class="resume-row" hidden>
+        <button id="continueBtn" class="play small">Fortsätt natten</button>
+        <span id="saveInfo" class="save-info"></span>
+        <button id="wipeBtn" class="link">Börja om från början</button>
+      </div>
       <p id="error" class="error" hidden></p>
       <div class="controls">
         <div><kbd>W A S D</kbd> run</div>
@@ -273,6 +279,7 @@ function drawMinimap(map: HudState["map"]) {
   marker(map.shop.x, map.shop.z, "S", "#7fe0ff");
   if (map.house) marker(map.house.x, map.house.z, "H", "#ffb37a");
   if (map.car) marker(map.car.x, map.car.z, "B", "#9fd0ff");
+  if (map.dog) marker(map.dog.x, map.dog.z, "S", "#ffcf8a");
 
   mctx.save();
   mctx.translate(sx(map.player.x), sy(map.player.z));
@@ -395,13 +402,19 @@ function escapeHtml(s: string) {
 }
 
 // --------------------------------------------------------------- control
-async function launch() {
+async function launch(resume = false) {
   if (game) return;
   setPhase("loading");
   // Let the loading screen paint before we spend a second building the city.
   await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
   try {
-    game = new Game(app, canvas, quality, { onState, onReady: () => undefined });
+    game = new Game(
+      app,
+      canvas,
+      quality,
+      { onState, onReady: () => undefined },
+      { restore: resume ? readSave() : null },
+    );
     game.audio.setMuted(muted);
     lockGraceUntil = performance.now() + 1000;
     game.start();
@@ -440,7 +453,29 @@ $("shopClose").addEventListener("click", () => {
   game.input.requestPointerLock();
 });
 
-$("playBtn").addEventListener("click", launch);
+$("playBtn").addEventListener("click", () => {
+  // Starting fresh throws away the old night, or it would come back on reload.
+  clearSave();
+  void launch(false);
+});
+$("continueBtn").addEventListener("click", () => void launch(true));
+$("wipeBtn").addEventListener("click", () => {
+  clearSave();
+  showSave();
+});
+
+/** Offer to continue only when there is something to continue from. */
+function showSave() {
+  const save = readSave();
+  $("resumeRow").hidden = !save;
+  if (save) {
+    $("saveInfo").textContent = describeSave(save);
+    $("playBtn").textContent = "Ny natt";
+  } else {
+    $("playBtn").textContent = "Släpp ut katten";
+  }
+}
+showSave();
 $("resumeBtn").addEventListener("click", resume);
 $("pauseBtn").addEventListener("click", pause);
 $("muteBtn").addEventListener("click", () => {
@@ -487,6 +522,11 @@ document.addEventListener("visibilitychange", () => {
   if (document.hidden && game?.isRunning) pause();
 });
 window.addEventListener("resize", () => game?.resize());
+// Backgrounding a tab on a phone is how most sessions end.
+window.addEventListener("pagehide", () => game?.save());
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) game?.save();
+});
 
 setPhase("menu");
 void phase;

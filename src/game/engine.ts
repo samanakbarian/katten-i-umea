@@ -14,6 +14,8 @@ import { Sky } from "./sky";
 import { Coins } from "./money";
 import {
   CAR_POS,
+  CATALOGUE,
+  HOUSE_LIGHT_INTENSITY,
   HOUSE_POS,
   SHOP_POS,
   Shop,
@@ -22,6 +24,8 @@ import {
   buildShop,
 } from "./shop";
 import { Car } from "./car";
+import { Dog } from "./dog";
+import { SaveData, writeSave } from "./save";
 
 export type Quality = "low" | "high";
 
@@ -53,6 +57,7 @@ export interface HudState {
   kmh: number;
   ownsHouse: boolean;
   ownsCar: boolean;
+  hasDog: boolean;
   /** Everything the minimap needs, in world units. */
   map: {
     player: { x: number; z: number; yaw: number };
@@ -63,12 +68,18 @@ export interface HudState {
     shop: { x: number; z: number };
     house: { x: number; z: number } | null;
     car: { x: number; z: number } | null;
+    dog: { x: number; z: number } | null;
   };
 }
 
 export interface GameCallbacks {
   onState: (s: HudState) => void;
   onReady: () => void;
+}
+
+export interface GameOptions {
+  /** Pick up where a previous night left off. */
+  restore?: SaveData | null;
 }
 
 const FISH_TOTAL = 30;
@@ -92,7 +103,9 @@ export class Game {
   private coins: Coins;
   private shop = new Shop();
   private car: Car;
-  private houseGroup: THREE.Group | null = null;
+  private dog: Dog;
+  private houseGroup: THREE.Group;
+  private houseLight: THREE.PointLight;
   private sun: THREE.DirectionalLight;
   private catLight: THREE.PointLight;
 
@@ -109,6 +122,8 @@ export class Game {
   private adaptTimer = 0;
   private finished = false;
   private hudAccumulator = 0;
+  private frameCount = 0;
+  private autosave = 20;
   private shopOpen = false;
   private shopMessage: string | null = null;
   private shopMessageTimer = 0;
@@ -122,6 +137,7 @@ export class Game {
     private canvas: HTMLCanvasElement,
     private quality: Quality,
     private callbacks: GameCallbacks,
+    private options: GameOptions = {},
   ) {
     this.renderer = new THREE.WebGLRenderer({
       canvas,
@@ -199,7 +215,18 @@ export class Game {
 
     this.scene.add(buildShop(this.world.colliders));
     this.car = new Car(this.world);
-    this.scene.add(this.car.group);
+    // The car's body is hidden until it is bought, but its headlights stay in
+    // the scene from the start so the light count never changes mid-game.
+    this.scene.add(this.car.group, this.car.lightRig);
+
+    this.dog = new Dog(this.world);
+    this.scene.add(this.dog.group);
+
+    // Likewise the cat house: built now, revealed when paid for.
+    const house = buildCatHouse();
+    this.houseGroup = house.group;
+    this.houseLight = house.light;
+    this.scene.add(this.houseGroup, this.houseLight);
 
     // A soft warm light travelling with the cat keeps it readable at night.
     this.catLight = new THREE.PointLight(0xffe6cc, 0.8, 5, 2);
@@ -230,6 +257,19 @@ export class Game {
       this.composer.addPass(new OutputPass());
     }
 
+    // Compile every shader variant now, while the loading screen is still up.
+    // Otherwise the first frame that shows the house or the car pays for it,
+    // and on a phone that is a visible freeze.
+    this.houseGroup.visible = true;
+    this.car.group.visible = true;
+    this.dog.group.visible = true;
+    this.renderer.compile(this.scene, this.camera);
+    this.houseGroup.visible = false;
+    this.car.group.visible = false;
+    this.dog.group.visible = false;
+
+    if (this.options.restore) this.restore(this.options.restore);
+
     this.resize();
     this.callbacks.onReady();
 
@@ -245,6 +285,13 @@ export class Game {
           this.player.camPitch = pitch;
         },
         grant: (kr: number) => this.shop.add(kr),
+        lightCount: () => {
+          let n = 0;
+          this.scene.traverse((o) => {
+            if ((o as THREE.Light).isLight) n++;
+          });
+          return n;
+        },
         freecam: (px: number, py: number, pz: number, tx: number, ty: number, tz: number) => {
           this.freeCam = {
             pos: new THREE.Vector3(px, py, pz),
@@ -268,6 +315,14 @@ export class Game {
           yaw: Math.round(this.player.camYaw * 100) / 100,
           found: this.world.landmarks.filter((l) => l.found).map((l) => l.name),
           shopOpen: this.shopOpen,
+          frames: this.frameCount,
+          houseVisible: this.houseGroup.visible,
+          dog: this.dog.active
+            ? {
+                gap: Math.round(this.dog.position.distanceTo(this.player.position) * 10) / 10,
+                pos: this.dog.position.toArray().map((v) => Math.round(v * 10) / 10),
+              }
+            : null,
           parade: this.monkeys.paradeDebug(this.player.position),
         }),
       };
@@ -286,6 +341,7 @@ export class Game {
   pause() {
     this.running = false;
     cancelAnimationFrame(this.raf);
+    this.save();
   }
 
   resume() {
@@ -319,6 +375,7 @@ export class Game {
     this.raf = requestAnimationFrame(this.loop);
     const dt = Math.min(this.clock.getDelta(), 0.05);
     this.elapsed += dt;
+    this.frameCount++;
 
     this.fpsAvg = this.fpsAvg * 0.92 + (1 / Math.max(dt, 0.0001)) * 0.08;
     this.adaptQuality(dt);
@@ -414,7 +471,19 @@ export class Game {
       this.audio.coin();
     }
 
-    const startled = this.birds.update(dt, this.elapsed, p, meowed);
+    this.dog.update(dt, this.elapsed, this.car.occupied ? this.car.position : p);
+    if (meowed && this.dog.active) {
+      this.dog.bark();
+      this.audio.bark();
+    }
+
+    const startled = this.birds.update(
+      dt,
+      this.elapsed,
+      p,
+      meowed,
+      this.dog.active ? this.dog.position : undefined,
+    );
     if (startled) {
       this.birdsScared += startled;
       this.score += startled * 15;
@@ -423,6 +492,11 @@ export class Game {
     }
 
     if (this.houseRest > 0) this.houseRest -= dt;
+    this.autosave -= dt;
+    if (this.autosave <= 0) {
+      this.autosave = 20;
+      this.save();
+    }
     this.checkLandmarks();
 
     if (this.toastTimer > 0) {
@@ -546,10 +620,21 @@ export class Game {
       this.shopMessage = result.equippedOnly ? `${item.name} på.` : `${item.name} köpt och påtagen.`;
       this.audio.purr(0.8);
     } else if (item.kind === "house") {
-      this.houseGroup = buildCatHouse();
-      this.scene.add(this.houseGroup);
-      this.shopMessage = "Katthuset står på torget.";
+      this.houseGroup.visible = true;
+      this.houseLight.intensity = HOUSE_LIGHT_INTENSITY;
+      this.pickups.burst(HOUSE_POS.clone().setY(1.6), new THREE.Color("#ffd08a"), 30);
+      this.shopMessage = "Katthuset står på Rådhustorget.";
       this.audio.fanfare();
+    } else if (item.kind === "dog") {
+      this.dog.spawn(this.player.position);
+      this.dog.bark();
+      this.audio.bark();
+      this.pickups.burst(
+        this.player.position.clone().setY(this.player.position.y + 0.5),
+        new THREE.Color("#ffd8a0"),
+        24,
+      );
+      this.shopMessage = "Simba följer med dig nu.";
     } else if (item.kind === "car") {
       // Parked on the street outside, pointing down it.
       this.car.spawn(CAR_POS.clone(), Math.PI / 2);
@@ -557,7 +642,83 @@ export class Game {
       this.audio.fanfare();
     }
     this.shopMessageTimer = 4;
+    this.save();
     this.emitState();
+  }
+
+  // ------------------------------------------------------------------- saving
+
+  /** Snapshot of the night, small enough to sit in localStorage. */
+  snapshot(): SaveData {
+    const picked = this.pickups.serialize();
+    return {
+      version: 1,
+      savedAt: Date.now(),
+      elapsed: this.elapsed,
+      score: this.score,
+      birdsScared: this.birdsScared,
+      // money, owned and coat all come from the wallet.
+      ...this.shop.serialize(),
+      fish: picked.fish,
+      cream: picked.cream,
+      coins: this.coins.serialize(),
+      monkeys: this.monkeys.serialize(),
+      landmarks: this.world.landmarks.reduce<number[]>(
+        (acc, l, i) => (l.found ? (acc.push(i), acc) : acc),
+        [],
+      ),
+      player: {
+        x: this.player.position.x,
+        y: this.player.position.y,
+        z: this.player.position.z,
+        yaw: this.player.yaw,
+      },
+      car: this.car.spawned
+        ? {
+            x: this.car.position.x,
+            y: this.car.position.y,
+            z: this.car.position.z,
+            heading: this.car.heading,
+          }
+        : null,
+      dog: this.dog.active,
+    };
+  }
+
+  save() {
+    return writeSave(this.snapshot());
+  }
+
+  private restore(data: SaveData) {
+    this.elapsed = data.elapsed ?? 0;
+    this.score = data.score ?? 0;
+    this.birdsScared = data.birdsScared ?? 0;
+    this.shop.restore({ money: data.money, owned: data.owned, coat: data.coat });
+
+    const coat = CATALOGUE.find((i) => i.id === this.shop.equippedCoat);
+    if (coat?.coat) this.cat.setCoat(coat.coat);
+
+    this.pickups.restore({ fish: data.fish, cream: data.cream });
+    this.coins.restore(data.coins);
+    for (const i of data.landmarks ?? []) {
+      const lm = this.world.landmarks[i];
+      if (lm) lm.found = true;
+    }
+
+    if (data.player) {
+      this.player.position.set(data.player.x, data.player.y, data.player.z);
+      this.player.yaw = data.player.yaw ?? 0;
+    }
+    this.monkeys.restore(data.monkeys, this.player.position);
+
+    if (this.shop.ownsHouse) {
+      this.houseGroup.visible = true;
+      this.houseLight.intensity = HOUSE_LIGHT_INTENSITY;
+    }
+    if (data.car) {
+      this.car.spawn(new THREE.Vector3(data.car.x, data.car.y, data.car.z), data.car.heading);
+    }
+    if (data.dog) this.dog.spawn(this.player.position);
   }
 
   private checkLandmarks() {
@@ -604,6 +765,7 @@ export class Game {
       kmh: this.car.kmh,
       ownsHouse: this.shop.ownsHouse,
       ownsCar: this.shop.ownsCar,
+      hasDog: this.dog.active,
       map: {
         player: this.car.occupied
           ? { x: this.car.position.x, z: this.car.position.z, yaw: this.car.heading }
@@ -619,6 +781,7 @@ export class Game {
         shop: { x: SHOP_POS.x, z: SHOP_POS.z },
         house: this.shop.ownsHouse ? { x: HOUSE_POS.x, z: HOUSE_POS.z } : null,
         car: this.car.spawned ? { x: this.car.position.x, z: this.car.position.z } : null,
+        dog: this.dog.active ? { x: this.dog.position.x, z: this.dog.position.z } : null,
       },
     });
   }

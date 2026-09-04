@@ -3,6 +3,7 @@ import { World } from "./city";
 import { Input } from "./input";
 import { Collider, clamp, damp } from "./utils";
 import { radialSprite } from "./textures";
+import { beacon } from "./shop";
 
 /**
  * A small estate car, sized for a city and driven by a cat who can barely see
@@ -23,6 +24,14 @@ const CLIMB = 0.75;
 
 export class Car {
   readonly group = new THREE.Group();
+  /**
+   * The headlights live outside the car's group and stay in the scene for the
+   * whole session. A light that appears or disappears changes the light count,
+   * and three.js then recompiles every material in the city — a multi-second
+   * freeze on a phone. So they are always present, and only their intensity
+   * moves.
+   */
+  readonly lightRig = new THREE.Group();
   readonly position = new THREE.Vector3();
   heading = 0;
   speed = 0;
@@ -37,6 +46,7 @@ export class Car {
   private headlights: THREE.SpotLight[] = [];
   private beamPool: THREE.Mesh;
   private brakeLights: THREE.Mesh;
+  private marker: THREE.Mesh;
   private nearby: Collider[] = [];
   private camPos = new THREE.Vector3();
   private bodyTilt = 0;
@@ -127,11 +137,11 @@ export class Car {
     // Headlight beams. Two spots, no shadows — they are for mood and for
     // actually seeing the road, not for casting the car's own shadow.
     for (const s of [-1, 1]) {
-      const spot = new THREE.SpotLight(0xfff2d8, 90, 55, 0.7, 0.5, 1.1);
+      const spot = new THREE.SpotLight(0xfff2d8, 0, 55, 0.7, 0.5, 1.1);
       spot.position.set(s * 0.62, 0.86, 2.1);
       spot.target.position.set(s * 0.9, -0.4, 16);
       spot.castShadow = false;
-      this.group.add(spot, spot.target);
+      this.lightRig.add(spot, spot.target);
       this.headlights.push(spot);
     }
 
@@ -150,6 +160,11 @@ export class Car {
     this.beamPool.rotation.x = -Math.PI / 2;
     this.beamPool.position.set(0, 0.06, 7.5);
     this.group.add(this.beamPool);
+
+    // A column over the roof, so you can find where you parked.
+    this.marker = beacon("#9fd0ff", 14);
+    this.marker.position.set(0, 1.8, 0);
+    this.group.add(this.marker);
 
     this.group.visible = false;
   }
@@ -184,6 +199,9 @@ export class Car {
   private sync() {
     this.group.position.copy(this.position);
     this.group.rotation.y = this.heading;
+    // The lamps ride along without being parented to the car.
+    this.lightRig.position.copy(this.position);
+    this.lightRig.rotation.y = this.heading;
   }
 
   /** Idle: parked, lights off. */
@@ -323,11 +341,13 @@ export class Car {
 
   enter() {
     this.occupied = true;
+    this.marker.visible = false;
     this.camPos.set(0, 0, 0);
   }
 
   exit() {
     this.occupied = false;
+    this.marker.visible = true;
     this.speed = 0;
   }
 }
