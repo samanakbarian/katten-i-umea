@@ -35,7 +35,11 @@ const result = await build({
 const js = result.outputFiles[0].text;
 const css = await readFile(join(here, "style.css"), "utf8");
 
+// Without the viewport meta a phone lays the page out at ~980 px and scales it
+// down, which shrinks the whole HUD; maximum-scale keeps a pinch from fighting
+// the drag-to-look camera.
 const html = `<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>Katten i Umeå</title>
 <style>
 ${css}</style>

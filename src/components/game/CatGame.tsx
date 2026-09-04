@@ -260,20 +260,32 @@ export function CatGame() {
           </div>
 
           {hud.prompt && (
-            <div className="pointer-events-none absolute bottom-40 left-1/2 -translate-x-1/2 rounded-full border border-amber-300/30 bg-black/65 px-5 py-2 text-sm font-medium text-amber-100 backdrop-blur">
-              {hud.prompt}
+            <div
+              className={`pointer-events-none absolute left-1/2 -translate-x-1/2 rounded-full border border-amber-300/30 bg-black/65 px-5 py-2 text-sm font-medium text-amber-100 backdrop-blur ${
+                isTouch ? "top-[44%]" : "bottom-40"
+              }`}
+            >
+              {isTouch ? "Använd" : "F"} — {hud.prompt}
             </div>
           )}
 
           {hud.driving && (
-            <div className="pointer-events-none absolute bottom-14 right-6 text-right">
+            <div
+              className={`pointer-events-none absolute right-6 text-right ${
+                isTouch ? "bottom-[232px]" : "bottom-14"
+              }`}
+            >
               <div className="text-4xl font-black tabular-nums text-white/90">{hud.kmh}</div>
               <div className="text-[10px] uppercase tracking-[0.25em] text-white/40">km/h</div>
             </div>
           )}
 
           {/* Stamina */}
-          <div className="pointer-events-none absolute bottom-6 left-1/2 w-64 -translate-x-1/2">
+          <div
+            className={`pointer-events-none absolute left-1/2 -translate-x-1/2 ${
+              isTouch ? "bottom-2.5 w-[42vw]" : "bottom-6 w-64"
+            }`}
+          >
             <div className="h-2 overflow-hidden rounded-full border border-white/10 bg-black/50">
               <div
                 className="h-full rounded-full transition-[width] duration-100"
@@ -306,7 +318,9 @@ export function CatGame() {
 
           <button
             onClick={toggleMute}
-            className="absolute bottom-4 right-4 rounded-full border border-white/15 bg-black/45 px-3 py-2 text-sm backdrop-blur hover:bg-black/70"
+            className={`absolute right-4 rounded-full border border-white/15 bg-black/45 px-3 py-2 text-sm backdrop-blur hover:bg-black/70 ${
+              isTouch ? "top-[206px]" : "bottom-4"
+            }`}
             aria-label={muted ? "Slå på ljud" : "Stäng av ljud"}
           >
             {muted ? "🔇" : "🔊"}
@@ -316,7 +330,9 @@ export function CatGame() {
           {hud.toast && (
             <div
               key={hud.toast.key}
-              className="pointer-events-none absolute bottom-24 left-1/2 w-[min(92vw,30rem)] -translate-x-1/2 animate-[fadeUp_.4s_ease-out] rounded-2xl border border-amber-300/25 bg-black/65 px-5 py-4 text-center backdrop-blur-md"
+              className={`pointer-events-none absolute left-1/2 w-[min(92vw,30rem)] -translate-x-1/2 animate-[fadeUp_.4s_ease-out] rounded-2xl border border-amber-300/25 bg-black/65 px-5 py-4 text-center backdrop-blur-md ${
+                isTouch ? "top-[52%]" : "bottom-24"
+              }`}
             >
               <div className="text-lg font-semibold text-amber-200">{hud.toast.title}</div>
               <div className="mt-1 text-sm text-white/75">{hud.toast.body}</div>
@@ -330,6 +346,7 @@ export function CatGame() {
               <div className="grid grid-cols-2 gap-3">
                 {touchButton("meow", "Jama", "h-14 w-14 bg-white/10")}
                 {touchButton("sprint", "Spring", "h-14 w-14 bg-white/10")}
+                {touchButton("crouch", "Smyg", "h-14 w-14 bg-white/10")}
                 {touchButton("interact", "Använd", "h-14 w-14 bg-white/10 text-xs")}
                 {touchButton("jump", "Hopp", "h-20 w-20 bg-amber-400/25 text-base")}
               </div>

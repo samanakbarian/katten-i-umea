@@ -55,6 +55,7 @@ app.innerHTML = `
       <div class="touch-buttons">
         <button data-btn="meow">Jama</button>
         <button data-btn="sprint">Spring</button>
+        <button data-btn="crouch">Smyg</button>
         <button data-btn="interact">Använd</button>
         <button data-btn="jump" class="big">Hopp</button>
       </div>
@@ -328,7 +329,7 @@ function onState(s: HudState) {
 
   const promptEl = $("prompt");
   promptEl.hidden = !s.prompt;
-  if (s.prompt) promptEl.textContent = s.prompt;
+  if (s.prompt) promptEl.textContent = `${isTouch ? "Använd" : "F"} — ${s.prompt}`;
 
   const speedo = $("speedo");
   speedo.hidden = !s.driving;

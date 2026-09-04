@@ -43,7 +43,8 @@ export interface HudState {
   climbing: boolean;
   wet: boolean;
   fps: number;
-  /** Contextual "press F to…" line, or null. */
+  /** What the interact action would do right now, or null. Names the action
+   * only; the HUD prefixes the key or button for the device. */
   prompt: string | null;
   shopOpen: boolean;
   shopItems: ShopItemState[];
@@ -266,6 +267,7 @@ export class Game {
           stam: Math.round(this.player.stamina * 100) / 100,
           yaw: Math.round(this.player.camYaw * 100) / 100,
           found: this.world.landmarks.filter((l) => l.found).map((l) => l.name),
+          shopOpen: this.shopOpen,
           parade: this.monkeys.paradeDebug(this.player.position),
         }),
       };
@@ -464,9 +466,11 @@ export class Game {
   }
 
   /**
-   * One key does everything: shop at the kiosk, sleep in the house, get in and
-   * out of the car. Which of those it is depends on what the cat is standing
-   * next to, and the HUD shows the same answer as a prompt.
+   * One action does everything: shop at the kiosk, sleep in the house, get in
+   * and out of the car. Which of those it is depends on what the cat is
+   * standing next to. The prompt names only the action — how you trigger it is
+   * a keyboard key on a desktop and an on-screen button on a phone, so the HUD
+   * puts that part in.
    */
   private handleInteraction() {
     const p = this.player.position;
@@ -474,7 +478,7 @@ export class Game {
       (p.x - v.x) ** 2 + (p.z - v.z) ** 2 < r * r;
 
     if (this.car.occupied) {
-      this.prompt = "F — kliv ur bilen";
+      this.prompt = "kliv ur bilen";
       if (this.input.interactPressed) {
         this.car.exit();
         this.player.position.copy(this.car.doorStep);
@@ -485,12 +489,12 @@ export class Game {
     }
 
     if (near(SHOP_POS, 6)) {
-      this.prompt = "F — handla i Zoobutiken";
+      this.prompt = "handla i Zoobutiken";
       if (this.input.interactPressed) this.openShop();
       return;
     }
     if (this.car.spawned && near(this.car.position, 4)) {
-      this.prompt = "F — kör bilen";
+      this.prompt = "kör bilen";
       if (this.input.interactPressed) {
         this.car.enter();
         this.audio.engineStart();
@@ -499,7 +503,7 @@ export class Game {
       return;
     }
     if (this.shop.ownsHouse && near(HOUSE_POS, 4.5)) {
-      this.prompt = "F — sov i katthuset";
+      this.prompt = "sov i katthuset";
       if (this.input.interactPressed && this.houseRest <= 0) {
         this.player.stamina = 1;
         this.houseRest = 2;

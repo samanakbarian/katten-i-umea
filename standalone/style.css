@@ -281,10 +281,18 @@ kbd {
   backdrop-filter: blur(8px);
 }
 .touch-buttons button.big {
+  grid-column: 2;
   width: 80px;
   height: 80px;
   font-size: 15px;
   background: rgba(252, 211, 77, 0.25);
+}
+
+/* On a phone the keyboard list is noise; the on-screen buttons say it all. */
+@media (pointer: coarse) {
+  .controls {
+    display: none;
+  }
 }
 .touch-buttons button:active {
   transform: scale(0.95);
@@ -674,4 +682,71 @@ h2 {
 
 .stats {
   grid-template-columns: repeat(5, 1fr);
+}
+
+/* ---------------------------------------------------------------- phones */
+/* The bottom of a phone screen belongs to the thumbs: the stick on the left,
+   the buttons on the right. Everything transient moves into the empty middle
+   of the view instead of fighting them. */
+@media (pointer: coarse) {
+  .prompt {
+    top: 44%;
+    bottom: auto;
+    font-size: 13px;
+    padding: 7px 16px;
+  }
+
+  #toast {
+    top: 52%;
+    bottom: auto;
+    width: min(88vw, 26rem);
+    padding: 12px 16px;
+  }
+  .toast-title {
+    font-size: 16px;
+  }
+  .toast-body {
+    font-size: 13px;
+  }
+
+  /* Above the button cluster, not behind it. */
+  .speedo {
+    bottom: 232px;
+    right: 20px;
+  }
+  .speedo b {
+    font-size: 30px;
+  }
+
+  .mute {
+    bottom: auto;
+    top: 206px;
+    right: 16px;
+  }
+
+  .stamina {
+    bottom: 10px;
+    width: 42vw;
+  }
+
+  .touch-buttons button {
+    width: 52px;
+    height: 52px;
+    font-size: 12px;
+  }
+  .touch-buttons button.big {
+    width: 72px;
+    height: 72px;
+    font-size: 14px;
+  }
+
+  .panel {
+    padding: 9px 12px;
+  }
+  .count b {
+    font-size: 22px;
+  }
+  .count.small b {
+    font-size: 17px;
+  }
 }
