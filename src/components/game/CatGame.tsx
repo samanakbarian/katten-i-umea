@@ -187,7 +187,7 @@ export function CatGame() {
   ) => (
     <button
       key={name}
-      className={`select-none rounded-full border border-white/20 text-sm font-semibold tracking-wide text-white/90 backdrop-blur active:scale-95 ${cls}`}
+      className={`pointer-events-auto select-none rounded-full border border-white/20 text-sm font-semibold tracking-wide text-white/90 backdrop-blur active:scale-95 ${cls}`}
       onTouchStart={(e) => {
         e.preventDefault();
         gameRef.current?.input.setButton(name, true);
@@ -260,13 +260,24 @@ export function CatGame() {
           </div>
 
           {hud.prompt && (
-            <div
-              className={`pointer-events-none absolute left-1/2 -translate-x-1/2 rounded-full border border-amber-300/30 bg-black/65 px-5 py-2 text-sm font-medium text-amber-100 backdrop-blur ${
-                isTouch ? "top-[44%]" : "bottom-40"
+            <button
+              type="button"
+              // It reads as a button, so on a phone it is one — tapping the
+              // prompt is what everybody tries first.
+              onTouchStart={(e) => {
+                e.preventDefault();
+                gameRef.current?.input.setButton("interact", true);
+              }}
+              onTouchEnd={(e) => {
+                e.preventDefault();
+                gameRef.current?.input.setButton("interact", false);
+              }}
+              className={`absolute left-1/2 -translate-x-1/2 rounded-full border border-amber-300/30 bg-black/65 px-5 py-2 text-sm font-medium text-amber-100 backdrop-blur ${
+                isTouch ? "top-[44%] active:bg-amber-300/25" : "pointer-events-none bottom-40"
               }`}
             >
               {isTouch ? "Använd" : "F"} — {hud.prompt}
-            </div>
+            </button>
           )}
 
           {hud.driving && (
@@ -341,7 +352,7 @@ export function CatGame() {
 
           {/* Touch controls */}
           {isTouch && (
-            <div className="absolute inset-x-0 bottom-0 flex items-end justify-between p-5">
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between p-5">
               <div className="h-32 w-32 rounded-full border border-white/10 bg-white/5" />
               <div className="grid grid-cols-2 gap-3">
                 {touchButton("meow", "Jama", "h-14 w-14 bg-white/10")}

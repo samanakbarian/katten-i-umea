@@ -257,6 +257,9 @@ kbd {
   align-items: flex-end;
   justify-content: space-between;
   padding: 20px;
+  /* The stick and the look-drag are read off the canvas underneath, so this
+     strip has to be transparent to touches. Only the buttons take them. */
+  pointer-events: none;
 }
 .stick-well {
   width: 128px;
@@ -271,6 +274,7 @@ kbd {
   gap: 12px;
 }
 .touch-buttons button {
+  pointer-events: auto;
   width: 56px;
   height: 56px;
   border-radius: 999px;
@@ -521,6 +525,8 @@ h2 {
 
 .prompt {
   position: absolute;
+  font: inherit;
+  appearance: none;
   bottom: 160px;
   left: 50%;
   transform: translateX(-50%);
@@ -694,6 +700,13 @@ h2 {
     bottom: auto;
     font-size: 13px;
     padding: 7px 16px;
+    /* It reads as a button, so let it be one — tapping the prompt is what
+       everybody tries first. */
+    pointer-events: auto;
+    cursor: pointer;
+  }
+  .prompt:active {
+    background: rgba(252, 211, 77, 0.28);
   }
 
   #toast {

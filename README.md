@@ -32,9 +32,11 @@ npm run dev      # http://localhost:3000
 Behind the wheel, `W` and `S` are throttle and brake (`S` again reverses), `A`
 and `D` steer, and `Space` is the handbrake. Ice is slippery in a car too.
 
-Touch devices get a virtual stick on the left half of the screen, drag-to-look
-on the right, and on-screen buttons — including **Använd**, which does whatever
-`F` does on a keyboard. The prompt names the button for the device you are on,
+Touch devices get a virtual stick — a touch anywhere on the left half of the
+screen, with a circle drawn at the bottom to show where the thumb usually goes
+— drag-to-look on the right, and on-screen buttons, including **Använd**, which
+does whatever `F` does on a keyboard. The prompt itself is also tappable, since
+that is what a thumb goes for first. The prompt names the button for the device you are on,
 and the HUD moves the transient bits out of the thumb zone on a phone.
 
 ## The city

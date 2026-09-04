@@ -32,7 +32,7 @@ app.innerHTML = `
       <button id="pauseBtn" class="chip">Paus</button>
     </div>
 
-    <div id="prompt" class="prompt" hidden></div>
+    <button id="prompt" class="prompt" type="button" hidden></button>
 
     <div id="speedo" class="speedo" hidden><b id="kmh">0</b><span>km/h</span></div>
 
@@ -448,6 +448,18 @@ $("muteBtn").addEventListener("click", () => {
   game?.audio.setMuted(muted);
   $("muteBtn").textContent = muted ? "🔇" : "🔊";
 });
+
+// Tapping the prompt does the same thing as the Använd button.
+{
+  const p = $("prompt");
+  const hold = (down: boolean) => (e: Event) => {
+    e.preventDefault();
+    game?.input.setButton("interact", down);
+  };
+  p.addEventListener("touchstart", hold(true), { passive: false });
+  p.addEventListener("touchend", hold(false));
+  p.addEventListener("touchcancel", hold(false));
+}
 
 document.querySelectorAll<HTMLButtonElement>("[data-btn]").forEach((b) => {
   const name = b.dataset.btn as "jump" | "sprint" | "meow" | "crouch" | "interact";
